@@ -47,7 +47,7 @@ with open(csv_filename, 'a', newline='') as csvfile:
         imu.decode()   
         print("count :", counter)   
 
-        # if counter % 1000 == 0:
+        # if counter % 1000 == 0:  
         #     imu.Serial_IMU.reset_input_buffer()
         #     imu.Serial_IMU.reset_output_buffer() 
         #     # print("----------------------------------------")
@@ -94,8 +94,8 @@ with open(csv_filename, 'a', newline='') as csvfile:
 
             b1 = (B1_int16 >> 8 & 0x00ff)  
             b2 = (B1_int16 & 0x00FF)
-            b3 = (B2_int16 >> 8 & 0x00ff)
-            b4 = (B2_int16 & 0x00FF)
+            b3 = (B2_int16 >> 8 & 0x00ff) 
+            b4 = (B2_int16 & 0x00FF)  
 
             imu.send(b1, b2, b3, b4)   
 
@@ -112,6 +112,7 @@ with open(csv_filename, 'a', newline='') as csvfile:
             writer.writerow(data)
             csvfile.flush()  # Ensure data is written to file 
             print(f"| now: {now:^8.3f} | L_IMU_Ang: {L_IMU_angle:^8.3f} | R_IMU_Ang: {R_IMU_angle:^8.3f} | L_IMU_Vel: {L_IMU_vel:^8.3f} | R_IMU_Vel: {R_IMU_vel:^8.3f} | L_Cmd: {L_Cmd:^8.3f} | R_Cmd: {R_Cmd:^8.3f} | Peak: {pk:^8.3f} |")
+        
         # if (now - t_pr2 > 0.001):
             # t_pr2 = now
             # print(f"| now: {now:^8.3f} | L_IMU_Ang: {L_IMU_angle:^8.3f} | R_IMU_Ang: {R_IMU_angle:^8.3f} | L_IMU_Vel: {L_IMU_vel:^8.3f} | R_IMU_Vel: {R_IMU_vel:^8.3f} | L_Cmd: {L_Cmd:^8.3f} | R_Cmd: {R_Cmd:^8.3f} | Peak: {pk:^8.3f} |")

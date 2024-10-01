@@ -9,7 +9,7 @@
 #include <cstring>  
 
 /*MOTOR*/ 
-#include <FlexCAN_T4.h>  
+#include <FlexCAN_T4.h>   
 #include "Sig_Motor_Control.h"   
 
 // #include "ads1292r.h"   
@@ -32,10 +32,13 @@ double velocity_command = 0;
 double position_command = 0;  
 
 double M1_torque_command = 0;  
-double M2_torque_command = 0;  
+double M2_torque_command = 0;   
 
-double MAX_torque_command = 18;   
-double MIN_torque_command = -18;    
+double RL_torque_command_1 = 0.0;    
+double RL_torque_command_2 = 0.0;   
+
+double MAX_torque_command = 5;   
+double MIN_torque_command = -5;    
 
 int LimitInf = -18;    
 int LimitSup = 18;    
@@ -112,6 +115,7 @@ unsigned long Tinterval_ble_micros  = (unsigned long)(1000000 / cyclespersec_ble
 char datalength_ble = 32;      // Bluetooth Data Length (32)
 char data_ble[60] = {0};       // Data array for bluetooth data sending:  Teensy->RS232->Adafruit Feather nRF52840 Express(peripheral)->bluetooth->Adafruit Feather nRF52840 Express(central)->usb->computer
 char data_rs232_rx[60] = {0};  // Data array for bluetooth data receive:  computer->USB->Adafruit Feather nRF52840 Express(central)->bluetooth->Adafruit Feather nRF52840 Express(peripheral)->RS232->Teensy
+
 int L_leg_IMU_angle = 0;       //left knee angle
 int R_leg_IMU_angle = 0;  
 int L_motor_torque = 0;   
@@ -186,18 +190,27 @@ float ref_force_fre = 0.5;
 float l_ref_tau = 0.0;   
 float l_ref_tau_dt = 0.0;    
 float r_ref_tau = 0.0;     
-float r_ref_tau_dt = 0.0;     
+float r_ref_tau_dt = 0.0;    
+
+float l_leg_angle = 0.0;  
+float r_leg_angle = 0.0;  
+float l_leg_velocity = 0.0;   
+float r_leg_velocity = 0.0;  
 
 //*** Motor Mode Set ***//   
-int ctl_method = 1;    // 0 for using RL controller, 1 for using other normal controller  
+int ctl_method = 0;    // 0 for using RL controller, 1 for using other normal controller  
 int ctl_mode = 0;      // 0 for torque control, 1 for mit control    
 int ctl_type = 2;      // 0 for motion, 1 for force tracking, 2 for direct torque   
-int sensor_type = 0;   // 0 for using IMU, 1 for using encoder    
+int sensor_type = 1;   // 0 for using IMU, 1 for using encoder   
+int l_ctl_dir = -1;      
+int r_ctl_dir = 1;    
+float torque_cmd_scale = 20.0;  
 //*** Motor Mode Set ***//    
 
 //// setup can and motors ////
 void setup() {
-  delay(3000); 
+  delay(3000);   
+
   Serial.begin(115200);     //115200/9600=12
   Serial2.begin(115200);    //115200/9600=12
   //Serial7.begin(115200);  // Communication with Raspberry PI or PC for High-lever controllers like RL
@@ -294,8 +307,10 @@ void initial_Sig_motor() {
 
 //// Zhimin Hou for Sig Motor ////   
 void loop() {
+    Serial_Com.READ2();   
+
     current_time = micros() - t_0;        
-    t = current_time/1000000.0;      
+    t = current_time/1000000.0;       
     
     if (current_time - previous_time_ble > Tinterval_ble_micros) {
 
@@ -309,7 +324,7 @@ void loop() {
     tau_ff_1 = 0.0;     
     tau_ff_2 = 0.0;     
 
-    kp_imp = GUI_K_p;     
+    kp_imp = GUI_K_p;        
     kd_imp = 0.01 * GUI_K_p;         
 
     if (ctl_type == 0)
@@ -374,60 +389,61 @@ void loop() {
       r_pos_des = pos_ampl * sin(2 * M_PI * pos_fre * t);        
     } 
 
-    // //// use position and velocity from IMU   
-    // if (sensor_type == 0)
-    // {
-    //   imu.READ();    
-    //   //// use position and velocity from IMU  
-    //   RealIMU();    
-    // }  
-
     /// RL controller /// 
-    if (ctl_method == 0)
+    if (ctl_method == 0)  
     {
       if (sensor_type == 0)      
       {
-        // imu.READ();  
+        imu.READ();   
+
         // //// use position and velocity from IMU  
-        // RealIMU();   
+        // RealIMU();    
 
-        // Serial_Com.WRITE(Send, Send_Length);   
+        f_LTAVx = LTAVx.addSample(imu.LTAVx);  
+        f_RTAVx = RTAVx.addSample(imu.RTAVx);   
 
-        // L_CMD_int16 = (Serial_Com.SerialData2[3] << 8) | Serial_Com.SerialData2[4];
-        // L_CMD_serial = Serial_Com.uint_to_float(L_CMD_int16, -20, 20, 16);    
+        l_leg_angle = imu.LTx;     
+        r_leg_angle = imu.RTx;     
 
-        // R_CMD_int16 = (Serial_Com.SerialData2[5] << 8) | Serial_Com.SerialData2[6];
-        // R_CMD_serial = Serial_Com.uint_to_float(R_CMD_int16, -20, 20, 16);
-
-        M1_torque_command = assistive_ratio * L_CMD_serial;    
-        M2_torque_command = assistive_ratio * R_CMD_serial;    
+        l_leg_velocity = f_LTAVx;     
+        r_leg_velocity = f_RTAVx;     
       }
       else
       {
         //// use position and velocity from encoder 
-        UseEncoder();  
-      
-        Serial_Com.WRITE(Send, Send_Length);  
+        // UseEncoder();  
+        l_leg_angle = sig_m1.pos * 180/M_PI * l_ctl_dir;   
+        r_leg_angle = sig_m2.pos * 180/M_PI * r_ctl_dir;      
 
-        L_CMD_int16 = (Serial_Com.SerialData2[3] << 8) | Serial_Com.SerialData2[4];
-        L_CMD_serial = Serial_Com.uint_to_float(L_CMD_int16, -20, 20, 16);    
+        l_leg_velocity = sig_m1.spe * 180/M_PI * l_ctl_dir;    
+        r_leg_velocity = sig_m2.spe * 180/M_PI * r_ctl_dir;  
+      }  
 
-        R_CMD_int16 = (Serial_Com.SerialData2[5] << 8) | Serial_Com.SerialData2[6];
-        R_CMD_serial = Serial_Com.uint_to_float(R_CMD_int16, -20, 20, 16);
+      ////// send info via serial  
+      SendIMUSerial();   
+      Serial_Com.WRITE(Send, Send_Length);   
 
-        M1_torque_command = assistive_ratio * L_CMD_serial;  
-        M2_torque_command = assistive_ratio * R_CMD_serial;    
-      }
+      L_CMD_int16 = (Serial_Com.SerialData2[3] << 8) | Serial_Com.SerialData2[4];
+      L_CMD_serial = Serial_Com.uint_to_float(L_CMD_int16, -20, 20, 16);    
+
+      R_CMD_int16 = (Serial_Com.SerialData2[5] << 8) | Serial_Com.SerialData2[6];
+      R_CMD_serial = Serial_Com.uint_to_float(R_CMD_int16, -20, 20, 16); 
+
+      RL_torque_command_1 = L_CMD_serial;    
+      RL_torque_command_2 = R_CMD_serial;    
+
+      M1_torque_command = 0.0;     
+      M2_torque_command = 0.0;     
     }
     else{
-      // M1_torque_command = 0.0;     
-      // M2_torque_command = 0.0;     
+      M1_torque_command = 0.0;     
+      M2_torque_command = 0.0;     
       Serial.print("Please give the exact control method!!!");     
     }  
 
     // clip the torque command
     M1_torque_command = clip_torque(M1_torque_command);      
-    M2_torque_command = clip_torque(M1_torque_command);      
+    M2_torque_command = clip_torque(M1_torque_command);       
   
     if (ctl_mode == 1)    
     {
@@ -456,29 +472,9 @@ void loop() {
       sig_m1.sig_torque_cmd(M1_torque_command);       
       sig_m2.sig_torque_cmd(M2_torque_command);       
     }
-    // print_Data_Jimmy();    
+    // print_Data_Jimmy();     
     // Wait(100);   
 }  
-
-void UseEncoder(){ 
-  L_IMUX_int = Serial_Com.float_to_uint(sig_m1.pos, -180, 180, 16);     
-  R_IMUX_int = Serial_Com.float_to_uint(sig_m2.pos, -180, 180, 16);     
-
-  L_IMUV_int = Serial_Com.float_to_uint(sig_m1.spe, -800, 800, 16);     
-  R_IMUV_int = Serial_Com.float_to_uint(sig_m2.spe, -800, 800, 16);      
-  
-  Send[0] = 0x31;  
-  Send[1] = 0x32;  
-  Send[2] = L_IMUX_int >> 8;
-  Send[3] = L_IMUX_int & 0xFF;
-  Send[4] = R_IMUX_int >> 8;
-  Send[5] = R_IMUX_int & 0xFF;
-  Send[6] = L_IMUV_int >> 8;
-  Send[7] = L_IMUV_int & 0xFF;
-  Send[8] = R_IMUV_int >> 8;
-  Send[9] = R_IMUV_int & 0xFF;  
-  Send[10] = 0x33;   
-}
 
 void IMUSetup() {
   imu.INIT();   
@@ -615,6 +611,47 @@ void RealIMU() {
   Send[10] = 0x33;  
 }
 
+void UseEncoder(){ 
+  L_IMUX_int = Serial_Com.float_to_uint(sig_m1.pos*180/M_PI, -180, 180, 16);     
+  R_IMUX_int = Serial_Com.float_to_uint(sig_m2.pos*180/M_PI, -180, 180, 16);     
+
+  L_IMUV_int = Serial_Com.float_to_uint(sig_m1.spe*180/M_PI, -800, 800, 16);     
+  R_IMUV_int = Serial_Com.float_to_uint(sig_m2.spe*180/M_PI, -800, 800, 16);        
+  
+  Send[0] = 0x31;  
+  Send[1] = 0x32;  
+  Send[2] = L_IMUX_int >> 8;
+  Send[3] = L_IMUX_int & 0xFF;
+  Send[4] = R_IMUX_int >> 8;
+  Send[5] = R_IMUX_int & 0xFF;
+  Send[6] = L_IMUV_int >> 8;
+  Send[7] = L_IMUV_int & 0xFF;
+  Send[8] = R_IMUV_int >> 8;
+  Send[9] = R_IMUV_int & 0xFF;  
+  Send[10] = 0x33;   
+}
+
+void SendIMUSerial()
+{
+  L_IMUX_int = Serial_Com.float_to_uint(l_leg_angle, -180, 180, 16);     
+  R_IMUX_int = Serial_Com.float_to_uint(r_leg_angle, -180, 180, 16);     
+
+  L_IMUV_int = Serial_Com.float_to_uint(l_leg_velocity, -800, 800, 16);     
+  R_IMUV_int = Serial_Com.float_to_uint(r_leg_velocity, -800, 800, 16);         
+  
+  Send[0] = 0x31;  
+  Send[1] = 0x32;  
+  Send[2] = L_IMUX_int >> 8;
+  Send[3] = L_IMUX_int & 0xFF;  
+  Send[4] = R_IMUX_int >> 8;  
+  Send[5] = R_IMUX_int & 0xFF;  
+  Send[6] = L_IMUV_int >> 8;  
+  Send[7] = L_IMUV_int & 0xFF;  
+  Send[8] = R_IMUV_int >> 8;  
+  Send[9] = R_IMUV_int & 0xFF;  
+  Send[10] = 0x33;   
+}
+
 void RealIMU_Reset() {
   float reset_imu = 0;
 
@@ -659,7 +696,6 @@ void Receive_ble_Data(){
     float value_scale = 10.0;     
     if (data_rs232_rx[0] == 165) { // Check the first byte
       if (data_rs232_rx[1] == 90) { // Check the second byte
-
         if (data_rs232_rx[2] == 20) { // Check the number of elemnts in the package
 
           M_Selected        = data_rs232_rx[4]; 
@@ -707,14 +743,25 @@ void Transmit_ble_Data(){
 
   t_teensy = t * value_scale_ratio;      
 
-  L_leg_IMU_angle = imu.LTx * value_scale_ratio;       
-  R_leg_IMU_angle = imu.RTx * value_scale_ratio;      
+  // L_leg_IMU_angle = imu.LTx * value_scale_ratio;       
+  // R_leg_IMU_angle = imu.RTx * value_scale_ratio;      
+
+  // L_leg_IMU_angle = sig_m1.pos*180/M_PI * value_scale_ratio;       
+  // R_leg_IMU_angle = sig_m2.pos*180/M_PI * value_scale_ratio;      
+
+  L_leg_IMU_angle = l_leg_angle * value_scale_ratio;   
+  R_leg_IMU_angle = r_leg_angle * value_scale_ratio;    
+
+  // L_leg_IMU_angle = l_leg_angle;   
+  // R_leg_IMU_angle = r_leg_angle;    
 
   L_motor_torque = sig_m1.torque * value_scale_ratio;    
-  L_motor_torque_desired = M1_torque_command * value_scale_ratio;        
+  // L_motor_torque_desired = M1_torque_command * value_scale_ratio;     
+  L_motor_torque_desired = RL_torque_command_1 * value_scale_ratio;           
 
   R_motor_torque = sig_m2.torque * value_scale_ratio;     
-  R_motor_torque_desired = M2_torque_command * value_scale_ratio;      
+  // R_motor_torque_desired = M2_torque_command * value_scale_ratio;      
+  R_motor_torque_desired = RL_torque_command_2 * value_scale_ratio;      
 
   L_pos_int_d = l_pos_des * value_scale_ratio;              
   L_pos_int_a = sig_m1.pos * value_scale_ratio;              
@@ -742,12 +789,16 @@ void Transmit_ble_Data(){
   data_ble[6]  = R_leg_IMU_angle >> 8;  
   data_ble[7]  = L_motor_torque; 
   data_ble[8]  = L_motor_torque >> 8; 
-  data_ble[9]  = R_motor_torque; 
-  data_ble[10] = R_motor_torque >> 8;
-  data_ble[11] = L_motor_torque_desired;
-  data_ble[12] = L_motor_torque_desired >> 8;
-  data_ble[13] = R_motor_torque_desired;
-  data_ble[14] = R_motor_torque_desired >> 8;
+  data_ble[9]  = R_motor_torque;  
+  data_ble[10] = R_motor_torque >> 8;   
+  data_ble[11] = L_motor_torque_desired;  
+  data_ble[12] = L_motor_torque_desired >> 8;   
+  data_ble[13] = R_motor_torque_desired;   
+  data_ble[14] = R_motor_torque_desired >> 8;    
+  // data_ble[11] = RL_torque_command_1;  
+  // data_ble[12] = RL_torque_command_1 >> 8;
+  // data_ble[13] = RL_torque_command_2;
+  // data_ble[14] = RL_torque_command_2 >> 8;    
   data_ble[15] = t_teensy; 
   data_ble[16] = t_teensy >> 8;  
   data_ble[17] = L_pos_int_d;  

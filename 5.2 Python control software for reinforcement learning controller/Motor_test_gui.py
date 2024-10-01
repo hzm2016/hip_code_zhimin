@@ -213,7 +213,7 @@ class MainWindow(QWidget):
         Stiffness_gain_box.setValue(1)
         Damping_gain_box.setValue(0)
         FF_force_gain_box.setValue(0)
-        Assist_ratio_box.setValue(0)
+        Assist_ratio_box.setValue(0.1)
 
         # set paper
         Stiffness_gain_box.valueChanged.connect(Send_Parameters)

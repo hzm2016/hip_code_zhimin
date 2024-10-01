@@ -88,12 +88,10 @@ void Serial_Com::READ2()
 {
   if ( SERIAL_Isra.available() >= SerialData_Length )
   {
-   
     SerialData[0] = SERIAL_Isra.read(); if (SerialData[0] == Header[0]) {
       SerialData[1] = SERIAL_Isra.read();
       if (SerialData[1] == Header[1]) {
-        SerialData[2] = SERIAL_Isra.read();
-        //Serial.println(" go");
+        SerialData[2] = SERIAL_Isra.read();  
         if (SerialData[2] == Header[2]) {
           SERIAL_Isra.readBytes(&SerialData[3], SerialData_Length - 3);
           for (int i = 0; i <= SerialData_Length; i++) {

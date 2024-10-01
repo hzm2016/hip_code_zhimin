@@ -106,3 +106,7 @@ Youtube video: https://youtu.be/w6m0pwIsVQM
 - Log data (csv file)
 - Detect the available COM ports
 - Select the COM port for the communication
+
+
+IMU1: 3B:04:94:38:88:F6 
+IMU2: E9:65:F2:E3:6E:58 

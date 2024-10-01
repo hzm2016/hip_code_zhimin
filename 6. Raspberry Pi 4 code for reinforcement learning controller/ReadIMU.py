@@ -24,6 +24,7 @@ class READIMU(object):
         #Serial Variables --------
         self.buffer = 0x00
         self.buffer_len = 0x00  
+        
         #Serial Begin -------------
         # self.Serial_IMU = serial.Serial(ComPort, 230400, timeout=0.02, parity=serial.PARITY_NONE)
         #self.Serial_IMU = serial.Serial(ComPort, 115200, timeout=0.007, parity=serial.PARITY_NONE)
