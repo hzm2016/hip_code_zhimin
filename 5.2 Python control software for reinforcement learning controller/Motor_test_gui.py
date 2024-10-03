@@ -213,7 +213,7 @@ class MainWindow(QWidget):
         Stiffness_gain_box.setValue(1)
         Damping_gain_box.setValue(0)
         FF_force_gain_box.setValue(0)
-        Assist_ratio_box.setValue(0.1)
+        Assist_ratio_box.setValue(0.1)   
 
         # set paper
         Stiffness_gain_box.valueChanged.connect(Send_Parameters)
@@ -373,8 +373,8 @@ class MainWindow(QWidget):
                 ConnectButton.setText("Receiving")
                 ConnectButton.setStyleSheet("background-color : green")
                 Recieve_data()
-                if Data_Received_Flag:
-                    self.update_plot_data()
+                if Data_Received_Flag: 
+                    self.update_plot_data()  
                     Data_Received_Flag = False
                 
    
@@ -567,19 +567,19 @@ def Transmit_data():
     Stiffness_gain_byte    = pack_bytearray(Stiffness_gain)
     Damping_gain_byte      = pack_bytearray(Damping_gain)
     FF_force_gain_byte     = pack_bytearray(FF_force_gain)  
-    Assist_ratio_gain_byte = pack_bytearray(FF_force_gain)  
+    Assist_ratio_gain_byte = pack_bytearray(Assist_ratio_gain)  
     
     ref_pos_gain_byte        = pack_bytearray(ref_pos_gain)  
     ref_pos_fre_gain_byte    = pack_bytearray(ref_pos_fre_gain)
     ref_force_ampl_gain_byte = pack_bytearray(ref_force_ampl_gain)  
     ref_force_fre_gain_byte  = pack_bytearray(ref_force_fre_gain)  
     
-    print("Stiffness:, Damping:, FF_force:", Stiffness_gain_byte[0], Damping_gain_byte[0], FF_force_gain_byte[0])   
+    print("Stiffness:, Damping:, FF_force, Assist_ratio_gain :", Stiffness_gain_byte[0], Damping_gain_byte[0], FF_force_gain_byte[0], Assist_ratio_gain_byte[0])   
     print("Ref_pos :{}, Ref_pos_fre :{}, Ref_force :{}, Ref_force_fre :{}", ref_pos_gain_byte[0], ref_pos_fre_gain_byte[0], ref_force_ampl_gain_byte[0], ref_force_fre_gain_byte[0])    
     
     # data_package = bytearray([165, 90, rs232_datalength, Stiffness_gain_byte[0], Stiffness_gain_byte[1], Damping_gain_byte[0], Damping_gain_byte[1], FF_force_gain_byte[0], FF_force_gain_byte[1], int(Assist_ratio_gain), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
     data_package = bytearray([165, 90, rs232_datalength, 0, 0, 0, 0, 
-                            int(Stiffness_gain_byte[0]), int(Damping_gain_byte[0]), int(FF_force_gain_byte[0]), int(Assist_ratio_gain_byte[0]), 
+                            int(Stiffness_gain_byte[0]), int(Damping_gain_byte[0]), int(FF_force_gain_byte[0]), int(Assist_ratio_gain_byte[0] * 10), 
                             int(ref_pos_gain_byte[0]), int(ref_pos_fre_gain_byte[0]), int(ref_force_ampl_gain_byte[0]), int(ref_force_fre_gain_byte[0]), 
                             0, 0, 0, 0, 0])    
     if ser.is_open:     

@@ -17,6 +17,15 @@ from PyQt5.QtCore import *
 import sys  
 import json  
 import numpy as np  
+import socket  
+import random   
+
+server_ip = '10.154.28.205'   
+server_port = 45678 
+
+# 创建UDP服务器Socket
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+server_socket.bind((server_ip, server_port))
 
 # import threading 
 #thread = threading.Thread(target=read_from_serial)
@@ -66,7 +75,7 @@ L_motor_torque = 0
 R_motor_torque = 0
 L_motor_torque_desired = 0
 R_motor_torque_desired = 0
-L_motor_angpos = 0
+L_motor_angpos = 0  
 R_motor_angpos = 0  
 L_motor_angpos_a = 0  
 R_motor_angpos_a = 0  
@@ -158,39 +167,7 @@ class MainWindow(QWidget):
         Comm_Layout.addWidget(SerialComboBox)
         SerialComboBox.addItems(connected_ports) 
         Comm_Layout.addWidget(ConnectButton)
-        Comm_Layout.addWidget(LoggingButton)  
-
-        ##############################################
-        ## Parameter Adjustment ##
-        ##############################################
-        # ## stiffness 
-        # Cmd_Layout.addWidget(QLabel("Stiffness"))     
-        # Stiffness_text  = QLineEdit()  
-        # Cmd_Layout.addWidget(Stiffness_text)    
-        # # CmdButton = QPushButton("Send")
-        # # ## Objects Functions
-        # # CmdButton.clicked.connect(CmdButton_Clicked)
-        # ## Arrangement  
-        # # Cmd_Layout.addWidget(CmdButton)  
-
-        # ## damping
-        # Cmd_Layout.addWidget(QLabel("Damping"))   
-        # Damping_text  = QLineEdit()  
-        # Cmd_Layout.addWidget(Damping_text)   
-        # # CmdButton = QPushButton("Send")
-        # # ## Objects Functions
-        # # CmdButton.clicked.connect(CmdButton_Clicked)
-        # ## Arrangement 
-        # # Cmd_Layout.addWidget(CmdButton) 
-
-        # ## Forward gain
-        # Cmd_Layout.addWidget(QLabel("FF_Gain")) 
-        # Cmd_text  = QLineEdit()
-        # CmdButton = QPushButton("Send")  
-        # CmdButton.clicked.connect(CmdButton_Clicked)
-        # ## Arrangement
-        # Cmd_Layout.addWidget(Cmd_text)
-        # Cmd_Layout.addWidget(CmdButton)     
+        Comm_Layout.addWidget(LoggingButton)   
         
         ##############################################
         ## Parameter Adjustment ##
@@ -368,14 +345,22 @@ class MainWindow(QWidget):
     def all(self):  
         global Connection_Flag, Data_Received_Flag
         
-        if Connection_Flag:
-            if ser.in_waiting > 0:
-                ConnectButton.setText("Receiving")
-                ConnectButton.setStyleSheet("background-color : green")
-                Recieve_data()
-                if Data_Received_Flag:
-                    self.update_plot_data()
-                    Data_Received_Flag = False
+        Recieve_socket_data()   
+        
+        self.update_plot_data()
+        
+        # if Connection_Flag:
+        #     if ser.in_waiting > 0:
+        #         ConnectButton.setText("Receiving")
+        #         ConnectButton.setStyleSheet("background-color : green")
+                
+        #         # Recieve_data()   
+                
+        #         Recieve_socket_data()  
+                
+        #         if Data_Received_Flag:
+        #             self.update_plot_data()
+        #             Data_Received_Flag = False
                 
    
     def update_plot_data(self):
@@ -544,6 +529,41 @@ def Recieve_data():
         print('Waiting for the whole data package...')
         # ConnectButton.setText("Searching Hip Exoskeleton")
         # ConnectButton.setStyleSheet("background-color : orange")  
+
+def Recieve_socket_data():  
+    global ser, ble_datalength, data_length, decoded_data, Data_Received_Flag,\
+        L_leg_IMU_angle, R_leg_IMU_angle, L_motor_torque, R_motor_torque,\
+        L_motor_torque_desired, R_motor_torque_desired, t_teensy, L_motor_angpos, R_motor_angpos, L_motor_angpos_a, R_motor_angpos_a,\
+        t_0_teensy, first_teensy_time
+    
+    data, addr = server_socket.recvfrom(1024)  # 最大接收1024字节
+    print(f"Received message from {addr}: {data.decode()}")  
+    
+    all_list = [item.strip() for item in data.decode().split(",")]  
+    
+    L_leg_IMU_angle = float(all_list[0])   
+    R_leg_IMU_angle = float(all_list[1])  
+    L_motor_torque_desired  = float(all_list[2]) * 10
+    R_motor_torque_desired  = float(all_list[3]) * 10
+    print("all_list :", all_list)   
+    
+    L_motor_torque         = L_motor_torque_desired + random.random()
+    R_motor_torque         = R_motor_torque_desired + random.random()  
+    # L_motor_torque_desired = 0.0
+    # R_motor_torque_desired = 0.0 
+    t_teensy               = 0.0
+    L_motor_angpos         = L_leg_IMU_angle
+    L_motor_angpos_a       = L_leg_IMU_angle
+    R_motor_angpos         = R_leg_IMU_angle
+    R_motor_angpos_a       = R_leg_IMU_angle 
+    
+    t_teensy = time.time()   
+    
+    Data_Received_Flag = True
+    if first_teensy_time: 
+        t_0_teensy = t_teensy 
+        first_teensy_time = False  
+    
     
 def CmdButton_Clicked():
     global Transfer_Flag,\
@@ -679,4 +699,5 @@ if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     Window = MainWindow()  
     Window.show()
+    
     sys.exit(app.exec_())

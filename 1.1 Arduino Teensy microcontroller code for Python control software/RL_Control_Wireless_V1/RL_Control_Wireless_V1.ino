@@ -6,7 +6,8 @@
 #include "MovingAverage.h"
 /*MOTOR*/
 #include <FlexCAN_T4.h>
-#include "Motor_Control_Tmotor.h"
+// #include "Motor_Control_Tmotor.h"
+#include "Sig_Motor_Control.h" 
 
 FlexCAN_T4<CAN3, RX_SIZE_256, TX_SIZE_16> Can3;
 
@@ -38,8 +39,9 @@ float kp = 0;
 float kd = 0;
 float t_ff = 0;
 
-Motor_Control_Tmotor m1(Motor_ID, CAN_ID);
-Motor_Control_Tmotor m2(Motor_ID2, CAN_ID);
+Motor_Control_Tmotor sig_m1(0x001, CAN_ID);   
+Motor_Control_Tmotor sig_m2(0x000, CAN_ID);    
+
 /*MOTOR*/
 
 /*Isra Serial Class Setup*/
@@ -128,13 +130,83 @@ void setup() {
   Serial.print(String(cyclespersec_ble));
   Serial.println(" Hz");
   //####################
+
   initial_CAN();
-  initial_M1();
-  initial_M2();
+
   delay(100);
+
   IMUSetup();
   t_0 = micros();   
 }
+
+// //// initial sig motor //// 
+// void initial_Sig_motor() {  
+//   // sig_m1.error_clear();    
+//   // delay(200); 
+
+//   // sig_m1.reboot();  
+//   // delay(200);  
+
+//   // sig_m1.sig_motor_reset();   
+//   // sig_m2.sig_motor_reset();   
+//   // delay(1000);  
+
+//   // // delay(1000);  
+//   // sig_m1.sig_encoder_reset();    
+//   // sig_m2.sig_encoder_reset();    
+//   // delay(10000);   
+
+//   /////////// set control mode /////////  
+//   if (ctl_mode == 1)  
+//   {
+//     sig_m1.sig_mit_ctl_mode_start();      
+//     sig_m2.sig_mit_ctl_mode_start();  
+//   } 
+//   else
+//   {
+//     sig_m1.sig_torque_ctl_mode_start();    
+//     delay(200);   
+//     sig_m2.sig_torque_ctl_mode_start();        
+//   } 
+//   delay(200);  
+  
+//   sig_m1.sig_motor_start();    
+//   sig_m1.request_pos_vel();    
+//   delay(500);   
+
+//   sig_m2.sig_motor_start();    
+//   sig_m2.request_pos_vel();     
+//   delay(500);    
+
+//   if (ctl_mode == 1)  
+//   {
+//     sig_m1.sig_mit_ctl_cmd(0.0, 0.0, 0.0, 0.0, 0.01);     
+//     sig_m2.sig_mit_ctl_cmd(0.0, 0.0, 0.0, 0.0, 0.01);          
+//     receive_mit_ctl_feedback();     
+//   }
+//   else{
+//     // sig_m1.request_torque();   
+//     sig_m1.sig_torque_cmd(0.01);    
+//     delay(200);    
+//     // sig_m2.request_torque();   
+//     sig_m2.sig_torque_cmd(0.01);      
+//     delay(200);   
+//   } 
+
+//   for (int i =0; i < 500; i++)
+//   {
+//     receive_torque_ctl_feedback();     
+//   }
+//   // delay(500);  
+//   initial_pos_1 = sig_m1.pos;     
+//   initial_pos_2 = sig_m2.pos;    
+
+//   delay(500); 
+
+//   /////// command initial setting ///////
+//   M1_torque_command = 0.0;    
+//   M2_torque_command = 0.0;         
+// }
 
 void loop() {
 
@@ -149,13 +221,13 @@ void loop() {
     if (current_time - previous_time_ble > Tinterval_ble_micros) {
 
       Receive_ble_Data();
-      Transmit_ble_Data(); 
+      Transmit_ble_Data(); // send the BLE data
 
       previous_time_ble = current_time;
     }
 
-    fakeIMU();    
-    // RealIMU();    
+    // fakeIMU();    
+    RealIMU();    
 
     Serial_Com.WRITE(Send, Send_Length);  
 
@@ -168,171 +240,13 @@ void loop() {
     M1_torque_command = GUI_K * L_CMD_serial;   
     M2_torque_command = GUI_K * R_CMD_serial;   
 
-    int max_allowed_torque = 30; // Safety measurement to limit the commanded torque
-
-    if (abs(M1_torque_command) > max_allowed_torque || abs(M2_torque_command) > max_allowed_torque) {
-      M1_torque_command = 0;
-      M2_torque_command = 0;
-      Serial.println("ERROR 1");
-      Serial.println("ERROR 1");
-      Serial.println("ERROR 1");
-      Serial.println("ERROR 1");
-      Serial.println("ERROR 1");
-      Serial.println("You have exeded the maximum allowed torque.");
-      Serial.println("Yoo must adjust the gains of the controller and redo the whole experiment.");
-      RealIMU_Reset();
-      Serial_Com.WRITE(Send, Send_Length);
-      Wait(10000);
-      delay(1000);
-    }
-
-    // if (Serial_Com.SerialData2[2] == 0x42 && Serial_Com.SerialData2[7] == 0x43) {
-
-    //   if (abs(M1_torque_command) > max_allowed_torque || abs(M2_torque_command) > max_allowed_torque) {
-    //     M1_torque_command = 0;
-    //     M2_torque_command = 0;
-    //     Serial.println("ERROR 2");
-    //     Serial.println("ERROR 2");
-    //     Serial.println("ERROR 2");
-    //     Serial.println("ERROR 2");
-    //     Serial.println("ERROR 2");
-    //     RealIMU_Reset();
-    //     Serial_Com.WRITE(Send, Send_Length);
-    //     Wait(10000);
-    //   }
-      
-    //   M1_Torque_Control_Example();
-    //   Wait(1100); // Increasing this increases stability, but less smooth
-    //   M2_Torque_Control_Example();
-    //   Wait(1100);
-
-    //   Serial_Com.SerialData2[2] = 0xff;
-    //   Serial_Com.SerialData2[7] = 0xff;
-    // }
-
-    M1_Torque_Control_Example();
+    // M1_Torque_Control_Example();  
     Wait(1100); // Increasing this increases stability, but less smooth
-    M2_Torque_Control_Example();
-    Wait(1100);
-
-    print_Data_Ivan();
+    // M2_Torque_Control_Example();  
+    Wait(1100);  
 
     previous_time = current_time;
   }
-}
-
-void print_Data_Ivan() {
-  Serial.print(t);
-  Serial.print(" ");
-  Serial.print(imu.LTx);
-  Serial.print(" ");
-  Serial.print(imu.LTAVx);
-  Serial.print(" ");
-   Serial.print(m1.torque);
-  Serial.print(" ");
-  Serial.print(L_CMD_serial);
-  //Serial.print(m2.torque);
-  Serial.print(" ");
-  Serial.println(" ");
-}
-
-void print_Data() {
-  //  Serial.print(-20);
-  //  Serial.print(" ");
-  //  Serial.print(20);
-  //  Serial.print(" ");
-
-  //  Serial.print(imu.RTx);
-  //  Serial.print(" ");
-  //  Serial.print(f_RTAVx);
-  //  Serial.print(" ");
-
-
-  //  Serial.print(IMU22);
-  //  Serial.print(" ");
-  //Serial.print( t_i / 1000 );
-  //Serial.print(" ");
-  //Serial.print(imu.RTx / 5);
-  //Serial.print(" ");
-   Serial.print(imu.RTAVx / 10);
-   Serial.print(" ");
-  //  Serial.print(M1_torque_command);
-  //  Serial.print(" ");
-  //Serial.print(R_CMD_serial);//Received by Python from serial usb (commanded by the NN)
-  //Serial.print(" ");
-
-  // Serial.print(imu.LTx / 5);
-  // Serial.print(" ");
-  Serial.print(imu.LTAVx / 10);
-   Serial.print(" ");
-  Serial.print(m2.torque);//Why is the sign opposite to m1?
-  Serial.print(" ");
-  //  Serial.print(-M2_torque_command); // The one we send to the motor after R-CMD-SERIAL IS RECEIVED. Should be same as R_CMD_serial, unless saturation
-  //  Serial.print(" ");
-  //Serial.print(-m2.torque);  //Feedback torque from the motor (estimated with current)
-  Serial.print(M2_torque_command);
-  Serial.print(" ");
-
-  Serial.print(m1.torque);
-  Serial.print(" ");
-  Serial.print(M1_torque_command);
-  Serial.print(" ");
-  Serial.print(LimitInf);
-  Serial.print(" ");
-  Serial.print(LimitSup);
-  Serial.print(" ");
-
-  Serial.println(" ");
-}
-
-void print_Data_IMU() {
-  Serial.print(-180);
-  Serial.print(" ");
-  Serial.print(180);
-  Serial.print(" ");
-  //  Serial.print(IMU22);
-  Serial.print(" ");
-  Serial.print(imu.LTx);
-  Serial.print(" ");
-  Serial.print(imu.LTAVx);
-  Serial.print(" ");
-  Serial.print(imu.RTx);
-  Serial.print(" ");
-  Serial.print(imu.RTAVx);
-  Serial.println(" ");
-}
-
-void print_Data_Received() {
-
-  Serial.print(20);
-  Serial.print(" ");
-  Serial.print(-20);
-  Serial.print(" ");
-  Serial.print(L_CMD_serial);
-  Serial.print(" ");
-  Serial.print(R_CMD_serial);
-  Serial.print(" ");
-  Serial.println(" ");
-}
-
-void print_data_motor() {
-  //  double v1 = 90;
-  //  double v2 = -v1;
-  //  Serial.print(v1);
-  //  Serial.print("   ");
-  //Serial.print(current_time);
-  Serial.print(" ; ");
-  Serial.print(" M1_tor ; "); //M1 is left, M2 is right
-  Serial.print(m1.torque);
-  Serial.print(" ; M1_cmd ; ");
-  Serial.print(M1_torque_command);
-  Serial.print(" ; M2_tor ; ");
-  Serial.print(m2.torque);
-  Serial.print(" ; M2_cmd ; ");
-  Serial.print(M2_torque_command);
-  Serial.print(" ; M1_pos ; ");
-  Serial.print(m1.pos);
-  Serial.println(" ;  ");
 }
 
 void IMUSetup() {
@@ -341,86 +255,12 @@ void IMUSetup() {
   imu.INIT_MEAN();
 }
 
-void M1_Torque_Control_Example() {
-  p_des = 0;  //dont change this
-  v_des = 0;  //dont change this
-  kp = 0;     //dont change this
-  kd = 0;     //dont change this
-  t_ff = M1_torque_command;
-  m1.send_cmd(p_des, v_des, kp, kd, t_ff);
-  receive_CAN_data();
-}
-
-void M2_Torque_Control_Example() {
-  p_des = 0;  //dont change this
-  v_des = 0;  //dont change this
-  kp = 0;     //dont change this
-  kd = 0;     //dont change this
-  t_ff = M2_torque_command;
-  m2.send_cmd(p_des, v_des, kp, kd, t_ff);
-  receive_CAN_data();
-}
-
 void initial_CAN() {
   Can3.begin();
   Can3.setBaudRate(1000000);
   delay(400);
   Serial.println("Can bus setup done...");
   delay(200);
-}
-
-void initial_M1() {
-  //m1.initial_CAN();
-  m1.exit_control_mode();
-  delay(200);
-  m1.exit_control_mode();
-  delay(1000);
-  m1.enter_control_mode();
-  delay(200);
-  receive_CAN_data();
-  delay(200);
-  m1.set_origin();
-  delay(200);
-  receive_CAN_data();
-  delay(2);
-  position_command = 0;
-  M1_Position_Control_Example();
-  Serial.println("M1 Done");
-  delay(100);
-}
-
-void initial_M2() {
-  //m2.initial_CAN();
-  m2.exit_control_mode();
-  delay(200);
-  m2.exit_control_mode();
-  delay(1000);
-  m2.enter_control_mode();
-  delay(200);
-  receive_CAN_data();
-  delay(200);
-  m2.set_origin();
-  delay(200);
-  receive_CAN_data();
-  delay(2);
-  position_command = 0;
-  M2_Position_Control_Example();
-  Serial.println("M2 Done");
-  delay(100);
-}
-
-void receive_CAN_data() {
-  if (Can3.read(msgR)) {
-    Can3.read(msgR);
-    int id = msgR.buf[0];
-    //Serial.print(msgR.id, HEX );
-    if (id == Motor_ID) {
-      m1.unpack_reply(msgR);
-    }
-    if (id == Motor_ID2) {
-      m2.unpack_reply(msgR);
-    }
-  }
 }
 
 void fakeIMU() {
@@ -500,28 +340,6 @@ void RealIMU_Reset() {
   Send[10] = 0x33;
 }
 
-void M1_Position_Control_Example() {
-  position_command = 0;
-  p_des = position_command * PI / 180;
-  v_des = 0;  //dont change this
-  kp = 30;    //max 450 min 0
-  kd = 1.5;   //max 5 min 0
-  t_ff = 0;   //dont change this
-  m1.send_cmd(p_des, v_des, kp, kd, t_ff);
-  receive_CAN_data();
-}
-
-void M2_Position_Control_Example() {
-  position_command = 0;
-  p_des = position_command * PI / 180;
-  v_des = 0;  //dont change this
-  kp = 30;    //max 450 min 0
-  kd = 1.5;   //max 5 min 0
-  t_ff = 0;   //dont change this
-  m2.send_cmd(p_des, v_des, kp, kd, t_ff);
-  receive_CAN_data();
-}
-
 void Wait(unsigned long delay_control) {
   unsigned long Time_start = micros();
   unsigned long Time_Delta = delay_control;
@@ -578,8 +396,8 @@ void Transmit_ble_Data(){
   t_teensy = t * 100;
   L_leg_IMU_angle = imu.LTx * 100;
   R_leg_IMU = imu.RTx * 100; 
-  L_motor_torque = m1.torque * 100;
-  R_motor_torque = m2.torque * 100;
+  L_motor_torque = 0.0 * 100;
+  R_motor_torque = 0.0 * 100;
   L_motor_torque_desired = M1_torque_command *100;
   R_motor_torque_desired = M2_torque_command *100;
 
