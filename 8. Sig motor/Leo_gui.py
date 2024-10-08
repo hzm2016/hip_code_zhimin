@@ -1,5 +1,5 @@
 '''
-This GUI is developed for motor control 
+This GUI is developed based on socket communication  
 '''
 import serial
 from serial.tools import list_ports
@@ -18,43 +18,12 @@ import sys
 import json  
 import numpy as np  
 import socket  
-import random   
+import random    
+import zmq  
 
-server_ip = '10.154.28.205'   
-server_port = 45678 
 
-# 创建UDP服务器Socket
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-server_socket.bind((server_ip, server_port))
 
-# import threading 
-#thread = threading.Thread(target=read_from_serial)
-#thread.daemon = True
-#thread.start()
-
-def find_available_ports():
-    connected_ports = []
-
-    # Get a list of all available ports
-    available_ports = list(list_ports.comports())
-
-    for port, desc, hwid in available_ports:
-        try:
-            # Attempt to open the serial port
-            ser = serial.Serial(port)
-            
-            # Check if there is something connected to the port
-            if ser.readable():
-                connected_ports.append(port)
-                
-            # Close the serial port
-            ser.close()
-        except serial.SerialException:
-            pass
-
-    return connected_ports
-
-win_size  = 150 # Quantity of data points to be displayed in the GUI when real-time plotting
+win_size  = 150                                     # Quantity of data points to be displayed in the GUI when real-time plotting
 t_buffer                = list([0] * win_size)
 L_IMU_buffer            = t_buffer.copy()
 R_IMU_buffer            = t_buffer.copy()
@@ -89,6 +58,8 @@ Transfer_Flag      = False
 Data_Received_Flag = False
 first_teensy_time  = True
 
+Control_start_Flag = False   
+
 t = 0
 t_teensy = 0
 t_minus_1 = 0
@@ -99,8 +70,7 @@ q_d   = 0
 value_scale_send = 10.0     
 value_scale_receive = 100.0     
 
-class MainWindow(QWidget):  
-
+class MainWindow(QWidget):   
     def __init__(self, *args, **kwargs):
         super(MainWindow, self).__init__(*args, **kwargs)
         global t_buffer, L_IMU_buffer, R_IMU_buffer, BattVolt_buffer, L_motor_torque_buffer, R_motor_torque_buffer,\
@@ -111,13 +81,25 @@ class MainWindow(QWidget):
             ConnectButton, CmdButton, LoggingButton, Cmd_text, SerialComboBox,\
             Connection_Flag, connected_ports, Stiffness_text, Damping_text, \
             Stiffness_gain_box, Damping_gain_box, FF_force_gain_box, Assist_ratio_box, ref_pos_ampl_box, ref_pos_fre_box, ref_force_ampl_box, ref_force_fre_box  
-           
-        self.setWindowTitle('Motor Impedance Control Test')   
-        # self.setWindowTitle('Motor Test')   
-        self.setWindowIcon(QtGui.QIcon('BIRO_logo.png'))   
         
-        connected_ports = find_available_ports()
-
+        self.context = None 
+        self.socket  = None  
+        
+        # self.context = zmq.Context()    
+        # self.socket = self.context.socket(zmq.REP)          
+        # # self.socket.bind("tcp://10.154.28.205:7793")     
+        # self.socket.bind("tcp://192.168.12.112:7793")             
+        # print("服务器已启动，等待客户端连接...")    
+        
+        # # server_ip = '10.154.28.205'   
+        # # server_port = 45678   
+        # # # 创建UDP服务器Socket
+        # # server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # # server_socket.bind((server_ip, server_port))   
+          
+        self.setWindowTitle('Hip Exo RL Control Software')       
+        self.setWindowIcon(QtGui.QIcon('BIRO_logo.png'))      
+        
         # Layout definition
         MainLayout    = QHBoxLayout() # Window Layout
         LP_Layout     = QVBoxLayout() # Left Pannel Layout
@@ -128,14 +110,14 @@ class MainWindow(QWidget):
         RMotorLayout  = QVBoxLayout()  
 
         # Set the Main window layout
-        self.setLayout(MainLayout)
+        self.setLayout(MainLayout)   
 
         # Adding the sublayouts to the Main Layout
         MainLayout.addLayout(LP_Layout)
         MainLayout.addLayout(RTDD_Layout, stretch=5)
 
-        # Adding the subsublayouts
-        LP_Layout.addLayout(Comm_Layout)    
+        # Adding the subsublayouts  
+        LP_Layout.addLayout(Comm_Layout)     
         LP_Layout.addLayout(Cmd_Layout)   
         
         RTDD_Layout.addLayout(LMotorLayout, stretch=5)
@@ -144,10 +126,10 @@ class MainWindow(QWidget):
         # LP_Layout.addLayout(Ref_Layout, stretch=5)    
 
         # Creating the Plot objects (Real-time data displays)
-        LnR_IMU_plot        = pg.PlotWidget() # Real-time data display for the IMUs
-        L_Motor_TnTd_plot   = pg.PlotWidget()
-        L_Motor_AngPos_plot = pg.PlotWidget()
-        R_Motor_TnTd_plot   = pg.PlotWidget()
+        LnR_IMU_plot        = pg.PlotWidget()  # Real-time data display for the IMUs
+        L_Motor_TnTd_plot   = pg.PlotWidget()  
+        L_Motor_AngPos_plot = pg.PlotWidget()  
+        R_Motor_TnTd_plot   = pg.PlotWidget()  
         R_Motor_AngPos_plot = pg.PlotWidget()  
 
         ##############################
@@ -155,27 +137,29 @@ class MainWindow(QWidget):
         ##############################
 
         # Ctrls_Layout objects (creation & arrangement)
-        ## Objects
-        ConnectButton  = QPushButton("Connect")
-        SerialComboBox = QComboBox()
-        LoggingButton  = QPushButton("Data Logging")
+        ## Objects   
+        # SerialComboBox = QComboBox()    
+        ConnectButton  = QPushButton("Connect")     
+        ControlButton  = QPushButton("Control Start")     
+        LoggingButton  = QPushButton("Data Logging")     
+        
         ## Objects Functions
-        ConnectButton.clicked.connect(Connect_Clicked)
-        LoggingButton.clicked.connect(LogginButton_Clicked)  
-        ## Arrangement
-        Comm_Layout.addWidget(QLabel("ComPort:"))  
-        Comm_Layout.addWidget(SerialComboBox)
-        SerialComboBox.addItems(connected_ports) 
-        Comm_Layout.addWidget(ConnectButton)
-        Comm_Layout.addWidget(LoggingButton)   
+        ConnectButton.clicked.connect(self.Connect_Clicked)   
+        LoggingButton.clicked.connect(LogginButton_Clicked)    
+        ControlButton.clicked.connect(self.Control_start_Clicked)      
+        
+        Comm_Layout.addWidget(ConnectButton)  
+        Comm_Layout.addWidget(ControlButton)
+        Comm_Layout.addWidget(LoggingButton)     
         
         ##############################################
         ## Parameter Adjustment ##
         ##############################################
-        Param_block = QGroupBox("Parameter Adjustment")    
+        Param_block = QGroupBox("Parameter Specification")       
         Param_block_Layout = QGridLayout()  
         Param_block.setLayout(Param_block_Layout)   
         Cmd_Layout.addWidget(Param_block)   
+        
         # Parameters selectors
         Stiffness_gain_box = QDoubleSpinBox()   
         Damping_gain_box   = QDoubleSpinBox()   
@@ -190,18 +174,7 @@ class MainWindow(QWidget):
         Stiffness_gain_box.setValue(1)
         Damping_gain_box.setValue(0)
         FF_force_gain_box.setValue(0)
-        Assist_ratio_box.setValue(0.1)
-
-        # set paper
-        Stiffness_gain_box.valueChanged.connect(Send_Parameters)
-        Damping_gain_box.valueChanged.connect(Send_Parameters)
-        FF_force_gain_box.valueChanged.connect(Send_Parameters)
-        Assist_ratio_box.valueChanged.connect(Send_Parameters)
-
-        # Stiffness_gain_box_lb = QLabel("Stiffness [Nm/deg]")      
-        # Damping_gain_box_lb   = QLabel("Damping [Nm/deg/s]")      
-        # FF_force_gain_box_lb  = QLabel("Feedforward Force [Nm]")       
-        # Assist_ratio_box_lb   = QLabel("Assistive Ratio [0, 1]")       
+        Assist_ratio_box.setValue(0.1)   
         
         Stiffness_gain_box_lb = QLabel("Stiffness [Nm/rad]")      
         Damping_gain_box_lb   = QLabel("Damping [Nm*s/rad]")        
@@ -219,12 +192,6 @@ class MainWindow(QWidget):
         Param_block_Layout.addWidget(FF_force_gain_box, sw_ctrls_row, 3)   
         Param_block_Layout.addWidget(Assist_ratio_box, sw_ctrls_row, 4)  
         
-        # # reference force or position 
-        # Ref_param_block = QGroupBox("Reference Adjustment")    
-        # Ref_Param_block_Layout = QGridLayout()  
-        # Ref_param_block.setLayout(Ref_Param_block_Layout)   
-        # Ref_Layout.addWidget(Ref_param_block)   
-        
         # Parameters selectors
         ref_pos_ampl_box = QDoubleSpinBox()
         ref_pos_fre_box   = QDoubleSpinBox()
@@ -240,12 +207,6 @@ class MainWindow(QWidget):
         ref_pos_fre_box.setValue(1)    
         ref_force_ampl_box.setValue(1)     
         ref_force_fre_box.setValue(1)    
-
-        # set paper
-        ref_pos_ampl_box.valueChanged.connect(Send_Parameters)
-        ref_pos_fre_box.valueChanged.connect(Send_Parameters)
-        ref_force_ampl_box.valueChanged.connect(Send_Parameters)
-        ref_force_fre_box.valueChanged.connect(Send_Parameters)
 
         ref_pos_ampl_box_lb    = QLabel("Position [rad]")      
         ref_pos_fre_box_lb     = QLabel("Frequency [Hz]")      
@@ -263,10 +224,6 @@ class MainWindow(QWidget):
         Param_block_Layout.addWidget(ref_force_ampl_box, sw_ctrls_row, 3)    
         Param_block_Layout.addWidget(ref_force_fre_box, sw_ctrls_row, 4)   
         
-        #########################################
-        ##### Real-Time Data Display Layout #####
-        #########################################
-        # Adding the IMUs plot at the bottom of the Left Pannel Layout
         LP_Layout.addWidget(LnR_IMU_plot)
 
         # Left MotorLayout
@@ -345,22 +302,12 @@ class MainWindow(QWidget):
     def all(self):  
         global Connection_Flag, Data_Received_Flag
         
-        Recieve_socket_data()   
-        
-        self.update_plot_data()
-        
-        # if Connection_Flag:
-        #     if ser.in_waiting > 0:
-        #         ConnectButton.setText("Receiving")
-        #         ConnectButton.setStyleSheet("background-color : green")
-                
-        #         # Recieve_data()   
-                
-        #         Recieve_socket_data()  
-                
-        #         if Data_Received_Flag:
-        #             self.update_plot_data()
-        #             Data_Received_Flag = False
+        if Connection_Flag: 
+            Recieve_socket_data(socket=self.socket)      
+            if Control_start_Flag:   
+                self.update_plot_data()   
+        else: 
+            print("NOT Connected")    
                 
    
     def update_plot_data(self):
@@ -373,10 +320,8 @@ class MainWindow(QWidget):
             Connection_Flag, LogginButton_Flag,\
             csv_file_name, DataHeaders, t_0_teensy
 
-        if Connection_Flag == True:
-
-            t = time.time() - t_0
-
+        if Connection_Flag == True:  
+            t = time.time() - t_0  
             if t_minus_1 != t:  
                 t_buffer = t_buffer[1:]
                 t_buffer.append(t_teensy - t_0_teensy)
@@ -417,7 +362,7 @@ class MainWindow(QWidget):
                 R_motor_angpos_a_buffer.append(R_motor_angpos_a)       
             
                 # set data for each time 
-                self.L_IMU_line.setData(t_buffer, L_IMU_buffer)  
+                self.L_IMU_line.setData(t_buffer, L_IMU_buffer)   
                 self.R_IMU_line.setData(t_buffer, R_IMU_buffer)   
 
                 # set torque data 
@@ -454,101 +399,67 @@ class MainWindow(QWidget):
                         writer.writerow(LoggedData)  
             t_minus_1 = t
         else:
-            print("NOT Connected")  
+            print("NOT Connected")   
 
  
-def Connect_Clicked():  
-    global ConnectButton, ser, Connection_Flag, t_0, ble_datalength, data_length, decoded_data, rs232_datalength 
+    def Connect_Clicked(self):  
+        global ConnectButton, Connection_Flag, t_0  
 
-    ### Defining the size of the received packages ###
-    ble_datalength   = 32 # Recieved package data size
-    rs232_datalength = 20 # Transmited package data size
-    data_length      = ble_datalength - 3
-    decoded_data     = [0]*data_length  
-    ##################################################
-
-    #### Setting up the serial communication port and baudrate ###
-    serial_port = SerialComboBox.currentText()
-    baud_rate   = 115200
-    ############################################
-
-    ### Stablish the serial connection ###
-    ser = serial.Serial(port=serial_port, baudrate=baud_rate)
-    ser.timeout = 0 # set read timeout
-    ######################################
-
-    while not ser.is_open:
-        print('Serial port closed')
-    
-    if ser.is_open:  
-        print('Serial port opened') 
-        ConnectButton.setText("Bluetooth activated") 
-        ConnectButton.setStyleSheet("background-color : yellow")  
+        self.context = zmq.Context()    
+        self.socket = self.context.socket(zmq.REP)           
+        self.socket.bind("tcp://10.154.28.205:7794")     # 10.154.28.205  
+        # self.socket.bind("tcp://192.168.12.112:7794")             
+        print("服务器已启动，等待客户端连接...")    
+        
+        # server_ip = '10.154.28.205'   
+        # server_port = 45678   
+        # # 创建UDP服务器Socket  
+        # server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # server_socket.bind((server_ip, server_port))   
         Connection_Flag = True  
+        t_0 = time.time()     
+        
+        
+    def Control_start_Clicked(self):  
+        global ConnectButton, Connection_Flag, Control_start_Flag    
+        Control_start_Flag = True     
+        
 
-        t_0 = time.time()    # Set the initial time  
-
-def Recieve_data():   
-    global ser, ble_datalength, data_length, decoded_data, Data_Received_Flag,\
-            L_leg_IMU_angle, R_leg_IMU_angle, L_motor_torque, R_motor_torque,\
-            L_motor_torque_desired, R_motor_torque_desired, t_teensy, L_motor_angpos, R_motor_angpos, L_motor_angpos_a, R_motor_angpos_a,\
-            t_0_teensy, first_teensy_time
-    
-    if ser.in_waiting >= 32: 
-        if ser.read(1) == b'\xA5':  # 165 in uint8
-            if ser.read(1) == b'\x5A':  # 90 in uint8
-                expected_length = ser.read(1)  # Read the length byte
-                if expected_length == bytes([ble_datalength]):  # Check the length
-                    if ser.in_waiting >= data_length:  # Ensure enough data is available
-                        coded_data = ser.read(data_length)  
-                        #decoded_data = [0] * (data_length // 2)  # Initialize decoded data array
-                        decode_i = 0
-                        for i in range(1, data_length, 2):
-                            var = coded_data[i-1] + coded_data[i] * 256
-                            var = (var - 65536)/value_scale_receive if var > 32767 else var/value_scale_receive
-                            decoded_data[decode_i] = var   
-                            decode_i += 1   
-                    
-                    L_leg_IMU_angle        = decoded_data[0]   
-                    R_leg_IMU_angle        = decoded_data[1]  
-                    L_motor_torque         = decoded_data[2]
-                    R_motor_torque         = decoded_data[3]
-                    L_motor_torque_desired = decoded_data[4]
-                    R_motor_torque_desired = decoded_data[5]
-                    t_teensy               = decoded_data[6]
-                    L_motor_angpos         = decoded_data[7]   
-                    L_motor_angpos_a       = decoded_data[8]   
-                    R_motor_angpos         = decoded_data[9]   
-                    R_motor_angpos_a       = decoded_data[10]       
-
-                    Data_Received_Flag = True
-                    if first_teensy_time:
-                        t_0_teensy = t_teensy
-                        first_teensy_time = False
-    else:
-        print('Waiting for the whole data package...')
-        # ConnectButton.setText("Searching Hip Exoskeleton")
-        # ConnectButton.setStyleSheet("background-color : orange")  
-
-def Recieve_socket_data():  
+def Recieve_socket_data(socket=None):    
     global ser, ble_datalength, data_length, decoded_data, Data_Received_Flag,\
         L_leg_IMU_angle, R_leg_IMU_angle, L_motor_torque, R_motor_torque,\
         L_motor_torque_desired, R_motor_torque_desired, t_teensy, L_motor_angpos, R_motor_angpos, L_motor_angpos_a, R_motor_angpos_a,\
-        t_0_teensy, first_teensy_time
+        t_0_teensy, first_teensy_time, Stiffness_gain, Damping_gain, FF_force_gain, Assist_ratio_gain  
     
-    data, addr = server_socket.recvfrom(1024)  # 最大接收1024字节
-    print(f"Received message from {addr}: {data.decode()}")  
+    Stiffness_gain    = Stiffness_gain_box.value()    
+    Damping_gain      = Damping_gain_box.value()    
+    FF_force_gain     = FF_force_gain_box.value()    
+    Assist_ratio_gain = Assist_ratio_box.value()    
     
-    all_list = [item.strip() for item in data.decode().split(",")]  
+    ref_pos_gain = ref_pos_ampl_box.value()   
+    ref_pos_fre_gain = ref_pos_fre_box.value()   
+    ref_force_ampl_gain = ref_force_ampl_box.value()     
+    ref_force_fre_gain = ref_force_fre_box.value()    
+    
+    # data, addr = server_socket.recvfrom(1024)  # 最大接收1024字节
+    # print(f"Received message from {addr}: {data.decode()}")  
+    
+    data = socket.recv_string()    
+    all_list = [item.strip() for item in data.split(",")]  
+    
+    # para_tuned = f"{Stiffness_gain:.1f}" + "," + f"{Damping_gain:.1f}" + "," + f"{FF_force_gain:.1f}" + "," + f"{Assist_ratio_gain:.1f}"    
+    # socket.send_string(para_tuned)      
+    
+    para_reference = f"{ref_pos_gain:.1f}" + "," + f"{ref_pos_fre_gain:.1f}" + "," + f"{ref_force_ampl_gain:.1f}" + "," + f"{ref_force_fre_gain:.1f}"   
+    socket.send_string(para_reference)    
     
     L_leg_IMU_angle = float(all_list[0])   
-    R_leg_IMU_angle = float(all_list[1])  
-    L_motor_torque_desired  = float(all_list[2]) * 10
-    R_motor_torque_desired  = float(all_list[3]) * 10
-    print("all_list :", all_list)   
+    R_leg_IMU_angle = float(all_list[1])   
+    L_motor_torque_desired  = float(all_list[2]) * 10   
+    R_motor_torque_desired  = float(all_list[3]) * 10   
     
-    L_motor_torque         = L_motor_torque_desired + random.random()
-    R_motor_torque         = R_motor_torque_desired + random.random()  
+    L_motor_torque         = L_motor_torque_desired   
+    R_motor_torque         = R_motor_torque_desired     
     # L_motor_torque_desired = 0.0
     # R_motor_torque_desired = 0.0 
     t_teensy               = 0.0
@@ -559,57 +470,34 @@ def Recieve_socket_data():
     
     t_teensy = time.time()   
     
-    Data_Received_Flag = True
-    if first_teensy_time: 
+    Data_Received_Flag = True    
+    if first_teensy_time:   
         t_0_teensy = t_teensy 
-        first_teensy_time = False  
+        first_teensy_time = False   
     
-    
-def CmdButton_Clicked():
-    global Transfer_Flag,\
-        Cmd_text, cmd, Stiffness_text, Damping_text, damping, stiffness  
 
-    cmd = float(Cmd_text.text())    
-    stiffness = float(Stiffness_text.text())   
-    damping = float(Damping_text.text())     
-
-    # if cmd < 0 or cmd > 2:
-    #     showdialog()
-    #     cmd = saturation(cmd, 0, 2)
-    
-    Transmit_data()
-    print("| Command " + str(cmd) + " sent |")  
-
-def Transmit_data():
+def Transmit_socket_data():
     global rs232_datalength, data_package, ser, Stiffness_gain, Damping_gain, FF_force_gain, Assist_ratio_gain, ref_pos_gain, ref_pos_fre_gain, ref_force_ampl_gain, ref_force_fre_gain
 
     rs232_datalength = 20   
     Stiffness_gain_byte    = pack_bytearray(Stiffness_gain)
-    Damping_gain_byte      = pack_bytearray(Damping_gain)
+    Damping_gain_byte      = pack_bytearray(Damping_gain) 
     FF_force_gain_byte     = pack_bytearray(FF_force_gain)  
-    Assist_ratio_gain_byte = pack_bytearray(FF_force_gain)  
+    Assist_ratio_gain_byte = pack_bytearray(Assist_ratio_gain)   
     
     ref_pos_gain_byte        = pack_bytearray(ref_pos_gain)  
     ref_pos_fre_gain_byte    = pack_bytearray(ref_pos_fre_gain)
     ref_force_ampl_gain_byte = pack_bytearray(ref_force_ampl_gain)  
     ref_force_fre_gain_byte  = pack_bytearray(ref_force_fre_gain)  
     
-    print("Stiffness:, Damping:, FF_force:", Stiffness_gain_byte[0], Damping_gain_byte[0], FF_force_gain_byte[0])   
-    print("Ref_pos :{}, Ref_pos_fre :{}, Ref_force :{}, Ref_force_fre :{}", ref_pos_gain_byte[0], ref_pos_fre_gain_byte[0], ref_force_ampl_gain_byte[0], ref_force_fre_gain_byte[0])    
-    
-    # data_package = bytearray([165, 90, rs232_datalength, Stiffness_gain_byte[0], Stiffness_gain_byte[1], Damping_gain_byte[0], Damping_gain_byte[1], FF_force_gain_byte[0], FF_force_gain_byte[1], int(Assist_ratio_gain), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-    data_package = bytearray([165, 90, rs232_datalength, 0, 0, 0, 0, 
-                            int(Stiffness_gain_byte[0]), int(Damping_gain_byte[0]), int(FF_force_gain_byte[0]), int(Assist_ratio_gain_byte[0]), 
-                            int(ref_pos_gain_byte[0]), int(ref_pos_fre_gain_byte[0]), int(ref_force_ampl_gain_byte[0]), int(ref_force_fre_gain_byte[0]), 
-                            0, 0, 0, 0, 0])    
-    if ser.is_open:     
-        ser.write(data_package)   
-        # print(f"| {Stiffness_gain} | {Damping_gain} | {FF_force_gain} | {Assist_ratio_gain} |")
+    para_tuned = f"{Stiffness_gain:.1f}" + "," + f"{Damping_gain:.1f}" + "," + f"{FF_force_gain:.1f}" + "," + f"{Assist_ratio_gain:.1f}"    
+    socket.send_string(para_tuned)     
+
 
 def LogginButton_Clicked():
     global LogginButton_Flag, LoggingButton, csv_file_name, DataHeaders, t_0
     LogginButton_Flag = True
-    t_0 = time.time()
+    t_0 = time.time()  
     LoggingButton.setText("Logging data")
     LoggingButton.setStyleSheet("background-color : blue")
     csv_file_name = "GUI_Logger_" + time.strftime("%Y-%m-%d_%H-%M-%S") + ".csv"
@@ -618,20 +506,13 @@ def LogginButton_Clicked():
     # Create the CSV file and write the header
     with open(csv_file_name, mode="w", newline="") as file:
         writer = csv.DictWriter(file, fieldnames = DataHeaders)
-        writer.writeheader()
+        writer.writeheader()  
 
-def showdialog():
-   msg = QMessageBox()
-   msg.setIcon(QMessageBox.Warning)    
-   msg.setWindowTitle("Warning")
-   msg.setText("Value out of bounds")
-   msg.setInformativeText("Please introduce a numerical value between 0 and 2.")
-   msg.setDetailedText("Every value minor to 0 will be taken as 0 and every value greater that 2 will be taken as 2")
-   msg.setStandardButtons(QMessageBox.Ok)
-   msg.exec_()
 
-def saturation(value, min_value, max_value):
-    return max(min_value, min(value, max_value))
+def pack_bytearray(value_to_pack):    
+    bytearray = struct.pack('h', int(value_to_pack * value_scale_send))       
+    return bytearray     
+
 
 def Custom_QDoubleSpinBox(spinbox, value=0.0, minimum=0.0, maximum=100.0, single_step=1.0, decimals=2, prefix="", suffix=""):
     """
@@ -656,48 +537,9 @@ def Custom_QDoubleSpinBox(spinbox, value=0.0, minimum=0.0, maximum=100.0, single
     spinbox.setPrefix(prefix)
     spinbox.setSuffix(suffix) 
 
-def Send_Parameters(): 
-    global Stiffness_gain_box, Damping_gain_box, FF_force_gain_box, Assist_ratio_box,\
-            Stiffness_gain, Damping_gain, FF_force_gain, Assist_ratio_gain,\
-            ref_pos_ampl_box, ref_pos_fre_box, ref_force_ampl_box, ref_force_fre_box,\
-            ref_pos_gain, ref_pos_fre_gain, ref_force_ampl_gain, ref_force_fre_gain  
-        
-    Stiffness_gain    = Stiffness_gain_box.value()    
-    Damping_gain      = Damping_gain_box.value()    
-    FF_force_gain     = FF_force_gain_box.value()    
-    Assist_ratio_gain = Assist_ratio_box.value()    
-    
-    ref_pos_gain = ref_pos_ampl_box.value()   
-    ref_pos_fre_gain = ref_pos_fre_box.value()   
-    ref_force_ampl_gain = ref_force_ampl_box.value()     
-    ref_force_fre_gain = ref_force_fre_box.value()    
-
-    Transmit_data()  
-
-def pack_bytearray(value_to_pack):    
-    bytearray = struct.pack('h', int(value_to_pack * value_scale_send))       
-    return bytearray    
-
-# def Transmit_data():  
-#     global rs232_datalength, data_package, ser, Transfer_Flag,\
-#           cmd, stiffness, damping
-    
-#     value_scale = 100 
-    
-#     ##### assistive ratio ##### 
-#     data_package = bytearray([165, 90, rs232_datalength, 0, 0, 0, 0, 0, 
-#                               int(cmd*value_scale), int(stiffness*value_scale), int(damping*value_scale), 
-#                               0, 0, 0, 0, 0, 0, 0, 0, 0])    
-
-#     ##### second data  
-#     if ser.is_open:   
-#         ser.write(data_package)     
-
-#     Transfer_Flag = False   
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     Window = MainWindow()  
-    Window.show()
-    
-    sys.exit(app.exec_())
+    Window.show()  
+    sys.exit(app.exec_())  

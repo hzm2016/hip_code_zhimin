@@ -174,16 +174,16 @@ void loop() {
     RLTx_filtered     = RTx_filtered - LTx_filtered;
     RLTx_delay[doi]   = RLTx_filtered;
     torque_filtered   = (sin(RTx_filtered * PI / 180) - sin(LTx_filtered * PI / 180));
-    torque_delay[doi] = torque_filtered;
+    torque_delay[doi] = torque_filtered;  
 
-    currentpoint = doi;
-    delayindex   = doi - Assist_delay_gain;
+    currentpoint = doi;  
+    delayindex   = doi - Assist_delay_gain;  
 
     if (delayindex < 0) {
-      delayindex = delayindex + 100;
+      delayindex = delayindex + 100;  
     }
     else if (delayindex >= 100) {
-      delayindex = delayindex - 100;
+      delayindex = delayindex - 100;  
     }
 
     doi++;

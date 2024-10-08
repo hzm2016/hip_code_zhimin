@@ -101,9 +101,9 @@ double next_t;
 double delta_t;    
 
 //***For managing the Controller and Bluetooth rate
-unsigned long t_0 = 0;
+unsigned long t_0 = 0;   
 // double cyclespersec_ctrl = 28;  // [Hz] teensy controller sample rate (Maximum frequency: 1000 Hz due to Can Bus) Controller must be faster than ble
-double cyclespersec_ctrl = 100;    // [Hz] teensy controller sample rate (Maximum frequency: 1000 Hz due to Can Bus) Controller must be faster than ble
+double cyclespersec_ctrl = 200;    // [Hz] teensy controller sample rate (Maximum frequency: 1000 Hz due to Can Bus) Controller must be faster than ble
 double cyclespersec_ble  = 20;     // [Hz] Bluetooth sending data frequency 
 unsigned long current_time = 0;
 unsigned long previous_time = 0;                                           // used to control the controller sample rate.
@@ -209,13 +209,14 @@ float torque_cmd_scale = 20.0;
 
 //// setup can and motors ////
 void setup() {
-  delay(3000);   
-
-  Serial.begin(115200);     //115200/9600=12
-  Serial2.begin(115200);    //115200/9600=12
-  //Serial7.begin(115200);  // Communication with Raspberry PI or PC for High-lever controllers like RL
+  // delay(3000);   
+  // Serial.begin(115200);     //115200/9600=12
+  // Serial2.begin(115200);    //115200/9600=12
+  // //Serial7.begin(115200);  // Communication with Raspberry PI or PC for High-lever controllers like RL
   Serial5.begin(115200);    //used to communication with bluetooth peripheral. Teensy->RS232->Adafruit Feather nRF52840 Express(peripheral)
   
+  // delay(500); 
+
   Serial_Com.INIT();    
 
   //#################
@@ -228,12 +229,106 @@ void setup() {
   // Serial.println(" Hz");   
   //####################
 
-  initial_CAN();    
-  initial_Sig_motor();    
-  delay(100); 
+  // initial_CAN();    
+  // initial_Sig_motor();    
   IMUSetup();   
 
   t_0 = micros();    
+}  
+
+// Zhimin Hou for Sig Motor ////   
+void loop() {
+  imu.READ();   
+
+  Serial_Com.READ2();     
+
+  current_time = micros() - t_0;            
+  t = current_time/1000000.0;   
+
+  if (current_time - previous_time > Tinterval_ctrl_micros) { 
+    f_LTAVx = LTAVx.addSample(imu.LTAVx);  
+    f_RTAVx = RTAVx.addSample(imu.RTAVx);   
+
+    l_leg_angle    = imu.LTx;     
+    r_leg_angle    = imu.RTx;     
+    l_leg_velocity = f_LTAVx;     
+    r_leg_velocity = f_RTAVx;     
+    SendIMUSerial();    
+    Serial_Com.WRITE(Send, Send_Length);    
+
+    if (current_time - previous_time_ble > Tinterval_ble_micros) {
+
+      Receive_ble_Data();  
+      Transmit_ble_Data();      
+
+      previous_time_ble = current_time;  
+    }     
+    previous_time = current_time;  
+  } 
+
+  // if (current_time - previous_time > Tinterval_ctrl_micros) {
+
+  //   // f_LTAVx = LTAVx.addSample(imu.LTAVx);  
+  //   // f_RTAVx = RTAVx.addSample(imu.RTAVx);   
+
+  //   // l_leg_angle    = imu.LTx;     
+  //   // r_leg_angle    = imu.RTx;     
+  //   // l_leg_velocity = f_LTAVx;     
+  //   // r_leg_velocity = f_RTAVx;      
+
+  //   // SendIMUSerial();    
+  //   // Serial_Com.WRITE(Send, Send_Length);   
+
+  //   if (current_time - previous_time_ble > Tinterval_ble_micros) {
+
+  //     Receive_ble_Data();  
+  //     Transmit_ble_Data();      
+
+  //     previous_time_ble = current_time;   
+  //   }     
+  // }
+  // previous_time = current_time;  
+}  
+
+void IMUSetup() {
+  imu.INIT();   
+  delay(1500);     
+  imu.INIT_MEAN();     
+}  
+
+double clip_torque(double torque_command)
+{
+  float actual_command = 0.0;  
+  actual_command = fminf(fmaxf(MIN_torque_command, torque_command), MAX_torque_command);     
+
+  return actual_command;   
+}
+
+void initial_CAN() {
+  Can3.begin();
+  // Can3.setBaudRate(1000000);  
+  Can3.setBaudRate(1000000);  
+  delay(400);  
+  Serial.println("Can bus setup done...");  
+  delay(200);  
+}   
+
+float Sig_torque_control(float force_des, float dt_force_des, float force_t, float dt_force_t, float kp, float kd, float tau_ff)  
+{
+  float tor_cmd = 0;   
+
+  tor_cmd = kp * (force_des - force_t) + kd * (dt_force_des - dt_force_t) + tau_ff; 
+
+  return tor_cmd;   
+}  
+
+float Sig_motion_control(float pos_des, float vel_des, float pos_t, float vel_t, float kp, float kd, float tau_ff)  
+{
+  float pos_ctl_cmd = 0;   
+
+  pos_ctl_cmd = kp * (pos_des - pos_t) + kd * (vel_des - vel_t) + tau_ff; 
+
+  return pos_ctl_cmd;   
 }  
 
 //// initial sig motor //// 
@@ -306,226 +401,7 @@ void initial_Sig_motor() {
   M2_torque_command = 0.0;         
 }
 
-// Zhimin Hou for Sig Motor ////   
-void loop() {
-    imu.READ();   
-    Serial_Com.READ2();       
-
-    current_time = micros() - t_0;            
-    t = current_time/1000000.0;         
-    
-    if (current_time - previous_time > Tinterval_ctrl_micros) {
-      if (current_time - previous_time_ble > Tinterval_ble_micros) {
-
-        Receive_ble_Data();  
-        Transmit_ble_Data();      
-
-        previous_time_ble = current_time;   
-      }  
-
-      kp_imp = GUI_K_p;        
-      kd_imp = 0.01 * GUI_K_p;           
-
-      if (ctl_type == 0)  
-      {
-        // reference position 
-        l_pos_des = pos_ampl * sin(2 * M_PI * pos_fre * t);                            // rad
-        r_pos_des = pos_ampl * sin(2 * M_PI * pos_fre * t);                            // rad      
-
-        // reference velocity 
-        l_vel_des = 2 * M_PI * pos_fre * pos_ampl * cos(2 * M_PI * pos_fre * t);       // rad/s                                
-        r_vel_des = 2 * M_PI * pos_fre * pos_ampl * cos(2 * M_PI * pos_fre * t);       // rad/s    
-
-        // // for impedance demo 
-        // l_pos_des = 0.0;             
-        // r_pos_des = 0.0;                     
-        // l_vel_des = 0.0;              
-        // r_vel_des = 0.0;              
-
-        M1_torque_command = Sig_motion_control(
-          l_pos_des, l_vel_des, 
-          sig_m1.pos, sig_m1.spe, 
-          kp_imp, kd_imp, 
-          tau_ff_1
-        ); 
-        M2_torque_command = Sig_motion_control(
-          r_pos_des, r_vel_des, 
-          sig_m2.pos, sig_m2.spe, 
-          kp_imp, kd_imp, 
-          tau_ff_2
-        );      
-      } 
-      else if (ctl_type == 1)   
-      { 
-        // Reference force  
-        l_ref_tau = ref_force_ampl * sin(2 * M_PI * ref_force_fre  * t);      
-        r_ref_tau = ref_force_ampl * sin(2 * M_PI * ref_force_fre  * t);      
-
-        l_ref_tau_dt = ref_force_ampl * 2 * M_PI * ref_force_fre * cos(2 * M_PI * ref_force_fre * t);     
-        r_ref_tau_dt = ref_force_ampl * 2 * M_PI * ref_force_fre * cos(2 * M_PI * ref_force_fre * t);   
-
-        M1_torque_command = Sig_torque_control(
-          l_ref_tau, l_ref_tau_dt, 
-          tau_t_1, tau_dt_1,  
-          kp_imp, kd_imp, 
-          tau_ff_1  
-        );    
-        M2_torque_command = Sig_torque_control(
-          r_ref_tau, r_ref_tau_dt, 
-          tau_t_2, tau_dt_2,  
-          kp_imp, kd_imp, 
-          tau_ff_2  
-        );    
-      } 
-      else
-      {
-        // direct torque  
-        M1_torque_command = cmd_ampl * sin(2 * M_PI * cmd_fre * t);       
-        M2_torque_command = cmd_ampl * sin(2 * M_PI * cmd_fre * t);                
-
-        l_pos_des = pos_ampl * sin(2 * M_PI * pos_fre * t);                           
-        r_pos_des = pos_ampl * sin(2 * M_PI * pos_fre * t);        
-      }  
-
-      /// RL controller ///   
-      if (ctl_method == 0)   
-      {
-        if (sensor_type == 0)      
-        {
-          //// use position and velocity from IMU  
-          // RealIMU();   
-
-          f_LTAVx = LTAVx.addSample(imu.LTAVx);  
-          f_RTAVx = RTAVx.addSample(imu.RTAVx);   
-
-          l_leg_angle    = imu.LTx;     
-          r_leg_angle    = imu.RTx;     
-          l_leg_velocity = f_LTAVx;     
-          r_leg_velocity = f_RTAVx;     
-
-          // fakeIMU();  
-
-          // l_leg_angle    = IMU11;  
-          // r_leg_angle    = IMU22; 
-
-          // l_leg_velocity = IMU33; 
-          // r_leg_velocity = IMU44;   
-        }
-        else
-        {
-          //// use position and velocity from encoder ////   
-          // UseEncoder();  
-          l_leg_angle = sig_m2.pos * 180/M_PI * l_ctl_dir;   
-          r_leg_angle = sig_m1.pos * 180/M_PI * r_ctl_dir;      
-
-          l_leg_velocity = sig_m2.spe * 180/M_PI * l_ctl_dir;    
-          r_leg_velocity = sig_m1.spe * 180/M_PI * r_ctl_dir;    
-        }  
-
-        SendIMUSerial();   
-        Serial_Com.WRITE(Send, Send_Length);    
-
-        L_CMD_int16 = (Serial_Com.SerialData2[3] << 8) | Serial_Com.SerialData2[4];
-        L_CMD_serial = Serial_Com.uint_to_float(L_CMD_int16, -20, 20, 16);    
-
-        R_CMD_int16 = (Serial_Com.SerialData2[5] << 8) | Serial_Com.SerialData2[6];
-        R_CMD_serial = Serial_Com.uint_to_float(R_CMD_int16, -20, 20, 16); 
-
-        RL_torque_command_1 = assistive_ratio * L_CMD_serial;      
-        RL_torque_command_2 = assistive_ratio * R_CMD_serial;     
-
-        M1_torque_command = RL_torque_command_2 * l_ctl_dir;         
-        M2_torque_command = RL_torque_command_1 * r_ctl_dir;       
-
-        // M1_torque_command = 0.0;     
-        // M2_torque_command = 0.0;      
-      }
-      else{
-        M1_torque_command = 0.0;     
-        M2_torque_command = 0.0;     
-        Serial.print("Please give the exact control method!!!");     
-      }  
-
-      // clip the torque command
-      M1_torque_command = clip_torque(M1_torque_command);       
-      M2_torque_command = clip_torque(M2_torque_command);         
-    
-      if (ctl_mode == 1)    
-      {
-        // mit control    
-        sig_m1.sig_mit_ctl_cmd(0.0, 0.0, 10.0, 0.01, M1_torque_command);      
-        sig_m2.sig_mit_ctl_cmd(0.0, 0.0, 10.0, 0.01, M2_torque_command);       
-        receive_mit_ctl_feedback();      
-      } 
-      else
-      {
-        sig_m1.request_torque();      
-        sig_m2.request_torque();      
-
-        receive_torque_ctl_feedback();     
-        
-        // next_t = micros() - t_0;   
-        // delta_t = next_t/1000000.0 - t;    
-
-        // tau_dt_1 = (tau_t_1 - tau_t_1_last)/delta_t;    
-        // tau_dt_2 = (tau_t_2 - tau_t_2_last)/delta_t;     
-        
-        // tau_t_1_last = tau_t_1;      
-        // tau_t_2_last = tau_t_2;         
-
-        sig_m1.sig_torque_cmd(M1_torque_command);      
-
-        sig_m2.sig_torque_cmd(M2_torque_command);       
-      }
-
-      // print_Data_Jimmy();     
-      // Wait(2200);   
-
-      previous_time = current_time; 
-    }  
-}  
-
-void IMUSetup() {
-  imu.INIT();   
-  delay(1500);     
-  imu.INIT_MEAN();     
-}  
-
-double clip_torque(double torque_command)
-{
-  float actual_command = 0.0;  
-  actual_command = fminf(fmaxf(MIN_torque_command, torque_command), MAX_torque_command);     
-
-  return actual_command;   
-}
-
-void initial_CAN() {
-  Can3.begin();
-  // Can3.setBaudRate(1000000);  
-  Can3.setBaudRate(1000000);  
-  delay(400);  
-  Serial.println("Can bus setup done...");  
-  delay(200);  
-}   
-
-float Sig_torque_control(float force_des, float dt_force_des, float force_t, float dt_force_t, float kp, float kd, float tau_ff)  
-{
-  float tor_cmd = 0;   
-
-  tor_cmd = kp * (force_des - force_t) + kd * (dt_force_des - dt_force_t) + tau_ff; 
-
-  return tor_cmd;   
-}  
-
-float Sig_motion_control(float pos_des, float vel_des, float pos_t, float vel_t, float kp, float kd, float tau_ff)  
-{
-  float pos_ctl_cmd = 0;   
-
-  pos_ctl_cmd = kp * (pos_des - pos_t) + kd * (vel_des - vel_t) + tau_ff; 
-
-  return pos_ctl_cmd;   
-}  
-
+/// @brief ///
 void receive_mit_ctl_feedback() {
   if (Can3.read(msgR)) {
     Can3.read(msgR);  

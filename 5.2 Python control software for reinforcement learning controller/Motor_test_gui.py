@@ -159,38 +159,6 @@ class MainWindow(QWidget):
         SerialComboBox.addItems(connected_ports) 
         Comm_Layout.addWidget(ConnectButton)
         Comm_Layout.addWidget(LoggingButton)  
-
-        ##############################################
-        ## Parameter Adjustment ##
-        ##############################################
-        # ## stiffness 
-        # Cmd_Layout.addWidget(QLabel("Stiffness"))     
-        # Stiffness_text  = QLineEdit()  
-        # Cmd_Layout.addWidget(Stiffness_text)    
-        # # CmdButton = QPushButton("Send")
-        # # ## Objects Functions
-        # # CmdButton.clicked.connect(CmdButton_Clicked)
-        # ## Arrangement  
-        # # Cmd_Layout.addWidget(CmdButton)  
-
-        # ## damping
-        # Cmd_Layout.addWidget(QLabel("Damping"))   
-        # Damping_text  = QLineEdit()  
-        # Cmd_Layout.addWidget(Damping_text)   
-        # # CmdButton = QPushButton("Send")
-        # # ## Objects Functions
-        # # CmdButton.clicked.connect(CmdButton_Clicked)
-        # ## Arrangement 
-        # # Cmd_Layout.addWidget(CmdButton) 
-
-        # ## Forward gain
-        # Cmd_Layout.addWidget(QLabel("FF_Gain")) 
-        # Cmd_text  = QLineEdit()
-        # CmdButton = QPushButton("Send")  
-        # CmdButton.clicked.connect(CmdButton_Clicked)
-        # ## Arrangement
-        # Cmd_Layout.addWidget(Cmd_text)
-        # Cmd_Layout.addWidget(CmdButton)     
         
         ##############################################
         ## Parameter Adjustment ##
@@ -375,7 +343,7 @@ class MainWindow(QWidget):
                 Recieve_data()
                 if Data_Received_Flag: 
                     self.update_plot_data()  
-                    Data_Received_Flag = False
+                    Data_Received_Flag = False  
                 
    
     def update_plot_data(self):

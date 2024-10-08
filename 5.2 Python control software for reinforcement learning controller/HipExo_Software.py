@@ -383,7 +383,7 @@ def Recieve_data():
                 t_0_teensy, first_teensy_time
         
         if ser.in_waiting >= 32:
-            if ser.read(1) == b'\xA5':  # 165 in uint8
+            if ser.read(1) == b'\xA5':    
                 if ser.read(1) == b'\x5A':  # 90 in uint8
                     expected_length = ser.read(1)  # Read the length byte
                     if expected_length == bytes([ble_datalength]):  # Check the length
