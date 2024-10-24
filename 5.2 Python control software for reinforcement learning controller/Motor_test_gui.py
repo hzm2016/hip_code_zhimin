@@ -531,16 +531,16 @@ def CmdButton_Clicked():
 def Transmit_data():
     global rs232_datalength, data_package, ser, Stiffness_gain, Damping_gain, FF_force_gain, Assist_ratio_gain, ref_pos_gain, ref_pos_fre_gain, ref_force_ampl_gain, ref_force_fre_gain
 
-    rs232_datalength = 20   
-    Stiffness_gain_byte    = pack_bytearray(Stiffness_gain)
+    rs232_datalength       = 20   
+    Stiffness_gain_byte    = pack_bytearray(Stiffness_gain)  
     Damping_gain_byte      = pack_bytearray(Damping_gain)
     FF_force_gain_byte     = pack_bytearray(FF_force_gain)  
-    Assist_ratio_gain_byte = pack_bytearray(Assist_ratio_gain)  
+    Assist_ratio_gain_byte = pack_bytearray(Assist_ratio_gain)    
     
     ref_pos_gain_byte        = pack_bytearray(ref_pos_gain)  
-    ref_pos_fre_gain_byte    = pack_bytearray(ref_pos_fre_gain)
-    ref_force_ampl_gain_byte = pack_bytearray(ref_force_ampl_gain)  
-    ref_force_fre_gain_byte  = pack_bytearray(ref_force_fre_gain)  
+    ref_pos_fre_gain_byte    = pack_bytearray(ref_pos_fre_gain)  
+    ref_force_ampl_gain_byte = pack_bytearray(ref_force_ampl_gain)   
+    ref_force_fre_gain_byte  = pack_bytearray(ref_force_fre_gain)   
     
     print("Stiffness:, Damping:, FF_force, Assist_ratio_gain :", Stiffness_gain_byte[0], Damping_gain_byte[0], FF_force_gain_byte[0], Assist_ratio_gain_byte[0])   
     print("Ref_pos :{}, Ref_pos_fre :{}, Ref_force :{}, Ref_force_fre :{}", ref_pos_gain_byte[0], ref_pos_fre_gain_byte[0], ref_force_ampl_gain_byte[0], ref_force_fre_gain_byte[0])    
@@ -626,25 +626,25 @@ def pack_bytearray(value_to_pack):
     bytearray = struct.pack('h', int(value_to_pack * value_scale_send))       
     return bytearray    
 
-# def Transmit_data():  
+# def Transmit_data():   
 #     global rs232_datalength, data_package, ser, Transfer_Flag,\
-#           cmd, stiffness, damping
+#           cmd, stiffness, damping 
     
-#     value_scale = 100 
-    
+#     value_scale = 100  
+
 #     ##### assistive ratio ##### 
 #     data_package = bytearray([165, 90, rs232_datalength, 0, 0, 0, 0, 0, 
 #                               int(cmd*value_scale), int(stiffness*value_scale), int(damping*value_scale), 
 #                               0, 0, 0, 0, 0, 0, 0, 0, 0])    
-
 #     ##### second data  
 #     if ser.is_open:   
 #         ser.write(data_package)     
 
 #     Transfer_Flag = False   
 
+
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
-    Window = MainWindow()  
-    Window.show()
-    sys.exit(app.exec_())
+    Window = MainWindow()   
+    Window.show()  
+    sys.exit(app.exec_())   

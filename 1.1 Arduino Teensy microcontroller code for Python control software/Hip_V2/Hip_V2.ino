@@ -38,8 +38,8 @@ double M2_torque_command = 0;
 double RL_torque_command_1 = 0.0;    
 double RL_torque_command_2 = 0.0;   
 
-double MAX_torque_command = 5;   
-double MIN_torque_command = -5;    
+double MAX_torque_command = 8;   
+double MIN_torque_command = -8;    
 
 int LimitInf = -18;    
 int LimitSup = 18;    
@@ -141,7 +141,7 @@ double GUI_force = 1.0;
 double GUI_K_p   = 1.0;    
 double GUI_K_d   = 0.1;    
 
-double assistive_ratio = 0.1;   
+double assistive_ratio = 0.08;   
 
 int L_pos_int_d = 0;     
 int L_pos_int_a = 0;     
@@ -189,7 +189,7 @@ float dt = 0.01;
 float tau_t_1 = 0.0;  
 float tau_t_1_last = 0.0;    
 float tau_t_2 = 0.0;    
-float tau_t_2_last = 0.0;  
+float tau_t_2_last = 0.0;   
 
 float tau_dt_1 = 0.0;    
 float tau_dt_2 = 0.0;     
@@ -201,6 +201,7 @@ float tau_ff_2 = 0.0;
 int ctl_method = 0;    // 0 for using RL controller, 1 for using other normal controller  
 int ctl_mode = 0;      // 0 for torque control, 1 for mit control    
 int ctl_type = 2;      // 0 for motion, 1 for force tracking, 2 for direct torque   
+
 int sensor_type = 0;   // 0 for using IMU, 1 for using encoder   
 int l_ctl_dir = -1;      
 int r_ctl_dir = 1;    
@@ -230,7 +231,7 @@ void setup() {
 
   initial_CAN();    
   initial_Sig_motor();    
-  delay(100); 
+  delay(100);  
   IMUSetup();   
 
   t_0 = micros();    
@@ -290,16 +291,16 @@ void initial_Sig_motor() {
     delay(200);   
   } 
 
-  for (int i =0; i < 500; i++)
+  for (int i =0; i < 1000; i++)
   {
     receive_torque_ctl_feedback();     
   }
-  delay(500);   
+  delay(1000);   
 
   initial_pos_1 = sig_m1.pos;     
   initial_pos_2 = sig_m2.pos;    
 
-  // delay(500);  
+  delay(500);  
 
   /////// command initial setting ///////
   M1_torque_command = 0.0;    
@@ -319,73 +320,11 @@ void loop() {
 
         Receive_ble_Data();  
         Transmit_ble_Data();      
-
         previous_time_ble = current_time;   
       }  
 
       kp_imp = GUI_K_p;        
       kd_imp = 0.01 * GUI_K_p;           
-
-      if (ctl_type == 0)  
-      {
-        // reference position 
-        l_pos_des = pos_ampl * sin(2 * M_PI * pos_fre * t);                            // rad
-        r_pos_des = pos_ampl * sin(2 * M_PI * pos_fre * t);                            // rad      
-
-        // reference velocity 
-        l_vel_des = 2 * M_PI * pos_fre * pos_ampl * cos(2 * M_PI * pos_fre * t);       // rad/s                                
-        r_vel_des = 2 * M_PI * pos_fre * pos_ampl * cos(2 * M_PI * pos_fre * t);       // rad/s    
-
-        // // for impedance demo 
-        // l_pos_des = 0.0;             
-        // r_pos_des = 0.0;                     
-        // l_vel_des = 0.0;              
-        // r_vel_des = 0.0;              
-
-        M1_torque_command = Sig_motion_control(
-          l_pos_des, l_vel_des, 
-          sig_m1.pos, sig_m1.spe, 
-          kp_imp, kd_imp, 
-          tau_ff_1
-        ); 
-        M2_torque_command = Sig_motion_control(
-          r_pos_des, r_vel_des, 
-          sig_m2.pos, sig_m2.spe, 
-          kp_imp, kd_imp, 
-          tau_ff_2
-        );      
-      } 
-      else if (ctl_type == 1)   
-      { 
-        // Reference force  
-        l_ref_tau = ref_force_ampl * sin(2 * M_PI * ref_force_fre  * t);      
-        r_ref_tau = ref_force_ampl * sin(2 * M_PI * ref_force_fre  * t);      
-
-        l_ref_tau_dt = ref_force_ampl * 2 * M_PI * ref_force_fre * cos(2 * M_PI * ref_force_fre * t);     
-        r_ref_tau_dt = ref_force_ampl * 2 * M_PI * ref_force_fre * cos(2 * M_PI * ref_force_fre * t);   
-
-        M1_torque_command = Sig_torque_control(
-          l_ref_tau, l_ref_tau_dt, 
-          tau_t_1, tau_dt_1,  
-          kp_imp, kd_imp, 
-          tau_ff_1  
-        );    
-        M2_torque_command = Sig_torque_control(
-          r_ref_tau, r_ref_tau_dt, 
-          tau_t_2, tau_dt_2,  
-          kp_imp, kd_imp, 
-          tau_ff_2  
-        );    
-      } 
-      else
-      {
-        // direct torque  
-        M1_torque_command = cmd_ampl * sin(2 * M_PI * cmd_fre * t);       
-        M2_torque_command = cmd_ampl * sin(2 * M_PI * cmd_fre * t);                
-
-        l_pos_des = pos_ampl * sin(2 * M_PI * pos_fre * t);                           
-        r_pos_des = pos_ampl * sin(2 * M_PI * pos_fre * t);        
-      }  
 
       /// RL controller ///   
       if (ctl_method == 0)   
@@ -432,23 +371,85 @@ void loop() {
         R_CMD_serial = Serial_Com.uint_to_float(R_CMD_int16, -20, 20, 16); 
 
         RL_torque_command_1 = assistive_ratio * L_CMD_serial;      
-        RL_torque_command_2 = assistive_ratio * R_CMD_serial;     
+        RL_torque_command_2 = assistive_ratio * R_CMD_serial;      
 
-        M1_torque_command = RL_torque_command_2 * l_ctl_dir;         
-        M2_torque_command = RL_torque_command_1 * r_ctl_dir;       
+        M1_torque_command = RL_torque_command_2 * r_ctl_dir;       /// for right.   
+        M2_torque_command = RL_torque_command_1 * l_ctl_dir;       /// for left.   
 
-        // M1_torque_command = 0.0;     
-        // M2_torque_command = 0.0;      
+        M1_torque_command = 0.0 * r_ctl_dir;                    /// for right. 
+        M2_torque_command = 0.0 * l_ctl_dir;                    /// for left. 
       }
       else{
-        M1_torque_command = 0.0;     
-        M2_torque_command = 0.0;     
-        Serial.print("Please give the exact control method!!!");     
-      }  
+      /// other controllers ///
+        if (ctl_type == 0)  
+        {
+          // reference position 
+          l_pos_des = pos_ampl * sin(2 * M_PI * pos_fre * t);                            // rad
+          r_pos_des = pos_ampl * sin(2 * M_PI * pos_fre * t);                            // rad      
 
-      // clip the torque command
-      M1_torque_command = clip_torque(M1_torque_command);       
-      M2_torque_command = clip_torque(M2_torque_command);         
+          // reference velocity 
+          l_vel_des = 2 * M_PI * pos_fre * pos_ampl * cos(2 * M_PI * pos_fre * t);       // rad/s                                
+          r_vel_des = 2 * M_PI * pos_fre * pos_ampl * cos(2 * M_PI * pos_fre * t);       // rad/s    
+
+          // // for impedance demo 
+          // l_pos_des = 0.0;             
+          // r_pos_des = 0.0;                     
+          // l_vel_des = 0.0;              
+          // r_vel_des = 0.0;             
+
+          M1_torque_command = Sig_motion_control(
+            l_pos_des, l_vel_des, 
+            sig_m1.pos, sig_m1.spe, 
+            kp_imp, kd_imp, 
+            tau_ff_1
+          ); 
+          M2_torque_command = Sig_motion_control(
+            r_pos_des, r_vel_des, 
+            sig_m2.pos, sig_m2.spe, 
+            kp_imp, kd_imp, 
+            tau_ff_2
+          );      
+        } 
+        else if (ctl_type == 1)   
+        { 
+          // Reference force  
+          l_ref_tau = ref_force_ampl * sin(2 * M_PI * ref_force_fre  * t);      
+          r_ref_tau = ref_force_ampl * sin(2 * M_PI * ref_force_fre  * t);      
+
+          l_ref_tau_dt = ref_force_ampl * 2 * M_PI * ref_force_fre * cos(2 * M_PI * ref_force_fre * t);     
+          r_ref_tau_dt = ref_force_ampl * 2 * M_PI * ref_force_fre * cos(2 * M_PI * ref_force_fre * t);   
+
+          M1_torque_command = Sig_torque_control(
+            l_ref_tau, l_ref_tau_dt, 
+            tau_t_1, tau_dt_1,  
+            kp_imp, kd_imp, 
+            tau_ff_1  
+          );    
+          M2_torque_command = Sig_torque_control(
+            r_ref_tau, r_ref_tau_dt, 
+            tau_t_2, tau_dt_2,  
+            kp_imp, kd_imp, 
+            tau_ff_2  
+          );    
+        } 
+        else
+        {
+          // direct torque  
+          M1_torque_command = cmd_ampl * sin(2 * M_PI * cmd_fre * t);       
+          M2_torque_command = cmd_ampl * sin(2 * M_PI * cmd_fre * t);                
+
+          l_pos_des = pos_ampl * sin(2 * M_PI * pos_fre * t);                           
+          r_pos_des = pos_ampl * sin(2 * M_PI * pos_fre * t);        
+
+          M1_torque_command = 0.0;     
+          M2_torque_command = 0.0;     
+          Serial.print("Please give the exact control method!!!");     
+        }  
+      }   
+
+      // clip the torque command  
+      M1_torque_command = clip_torque(M1_torque_command);         
+      M2_torque_command = clip_torque(M2_torque_command);           
     
       if (ctl_mode == 1)    
       {
@@ -457,13 +458,15 @@ void loop() {
         sig_m2.sig_mit_ctl_cmd(0.0, 0.0, 10.0, 0.01, M2_torque_command);       
         receive_mit_ctl_feedback();      
       } 
-      else
+      else 
       {
-        sig_m1.request_torque();      
-        sig_m2.request_torque();      
+        // sig_m1.request_torque();       
+        // sig_m2.request_torque();      
 
-        receive_torque_ctl_feedback();     
-        
+        for (int i =0; i < 4; i++)
+        {
+          receive_torque_ctl_feedback();     
+        }
         // next_t = micros() - t_0;   
         // delta_t = next_t/1000000.0 - t;    
 
@@ -710,13 +713,13 @@ void Receive_ble_Data(){
       if (data_rs232_rx[1] == 90) { // Check the second byte
         if (data_rs232_rx[2] == 20) { // Check the number of elemnts in the package
 
-          M_Selected        = data_rs232_rx[4]; 
-          CtrlMode_Selected = data_rs232_rx[6];   
+          M_Selected        = data_rs232_rx[4];    
+          CtrlMode_Selected = data_rs232_rx[6];    
 
-          GUI_stiffness_cmd = data_rs232_rx[7];   
+          GUI_stiffness_cmd = data_rs232_rx[7];    
           GUI_damping_cmd   = data_rs232_rx[8];    
           GUI_force_cmd     = data_rs232_rx[9];    
-          GUI_assistive_ratio_cmd = data_rs232_rx[10];    
+          GUI_assistive_ratio_cmd = data_rs232_rx[10];     
 
           GUI_K_p   = GUI_stiffness_cmd/value_scale;       
           GUI_K_d   = GUI_damping_cmd/value_scale;     
@@ -750,8 +753,8 @@ void Receive_ble_Data(){
   }
 }
 
-void Transmit_ble_Data(){
-  float value_scale_ratio = 100;  
+void Transmit_ble_Data(){ 
+  float value_scale_ratio = 100;   
 
   t_teensy = t * value_scale_ratio;      
 
@@ -767,25 +770,25 @@ void Transmit_ble_Data(){
   // L_leg_IMU_angle = l_leg_angle;   
   // R_leg_IMU_angle = r_leg_angle;     
 
-  L_motor_torque = sig_m1.torque * value_scale_ratio;    
+  L_motor_torque = sig_m2.torque * value_scale_ratio;    
   // L_motor_torque_desired = M1_torque_command * value_scale_ratio;     
   L_motor_torque_desired = RL_torque_command_1 * value_scale_ratio;           
 
-  R_motor_torque = sig_m2.torque * value_scale_ratio;     
+  R_motor_torque = sig_m1.torque * value_scale_ratio;     
   // R_motor_torque_desired = M2_torque_command * value_scale_ratio;      
   R_motor_torque_desired = RL_torque_command_2 * value_scale_ratio;      
 
   L_pos_int_d = l_pos_des * value_scale_ratio;              
-  L_pos_int_a = sig_m1.pos * value_scale_ratio;              
+  L_pos_int_a = sig_m2.pos * value_scale_ratio;              
 
   L_vel_int_d = l_vel_des * value_scale_ratio;      
-  L_vel_int_a = sig_m1.spe * value_scale_ratio;       
+  L_vel_int_a = sig_m2.spe * value_scale_ratio;       
 
   R_pos_int_d = r_pos_des * value_scale_ratio;              
-  R_pos_int_a = sig_m2.pos * value_scale_ratio;              
+  R_pos_int_a = sig_m1.pos * value_scale_ratio;              
 
   R_vel_int_d = r_vel_des * value_scale_ratio;      
-  R_vel_int_a = sig_m2.spe * value_scale_ratio;       
+  R_vel_int_a = sig_m1.spe * value_scale_ratio;       
 
   ////*** Totally, we send 32byte data
   // 0    header 165
@@ -826,7 +829,7 @@ void Transmit_ble_Data(){
   data_ble[27] = 0;
   data_ble[28] = 0 >> 8;
 
-  Serial5.write(data_ble, datalength_ble);
+  Serial5.write(data_ble, datalength_ble);  
   //Serial7.write(data_ble, datalength_ble);
   //Serial.print("Transmit Data Function Executed");
 }

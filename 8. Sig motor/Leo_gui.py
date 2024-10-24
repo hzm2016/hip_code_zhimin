@@ -374,14 +374,14 @@ class MainWindow(QWidget):
                 self.L_motor_angpos_a_line.setData(t_buffer, L_motor_angpos_a_buffer)    
 
                 # set torque error data  
-                self.R_Motor_Taud_line.setData(t_buffer, R_motor_torque_d_buffer)  
-                self.R_Motor_Tau_line.setData(t_buffer, R_motor_torque_buffer)  
+                self.R_Motor_Taud_line.setData(t_buffer, R_motor_torque_d_buffer)   
+                self.R_Motor_Tau_line.setData(t_buffer, R_motor_torque_buffer)   
 
                 # set position error data
                 self.R_motor_angpos_line.setData(t_buffer, R_motor_angpos_buffer)  
                 self.R_motor_angpos_a_line.setData(t_buffer, R_motor_angpos_a_buffer)     
 
-                if LogginButton_Flag == True:
+                if LogginButton_Flag == True: 
                     LoggedData = {
                         "time": t,
                         "L_IMU": L_leg_IMU_angle,
@@ -407,7 +407,7 @@ class MainWindow(QWidget):
 
         self.context = zmq.Context()    
         self.socket = self.context.socket(zmq.REP)           
-        self.socket.bind("tcp://10.154.28.205:7794")     # 10.154.28.205  
+        self.socket.bind("tcp://10.154.28.178:7794")        
         # self.socket.bind("tcp://192.168.12.112:7794")             
         print("服务器已启动，等待客户端连接...")    
         
@@ -455,8 +455,8 @@ def Recieve_socket_data(socket=None):
     
     L_leg_IMU_angle = float(all_list[0])   
     R_leg_IMU_angle = float(all_list[1])   
-    L_motor_torque_desired  = float(all_list[2]) * 10   
-    R_motor_torque_desired  = float(all_list[3]) * 10   
+    L_motor_torque_desired  = float(all_list[2])   
+    R_motor_torque_desired  = float(all_list[3]) 
     
     L_motor_torque         = L_motor_torque_desired   
     R_motor_torque         = R_motor_torque_desired     

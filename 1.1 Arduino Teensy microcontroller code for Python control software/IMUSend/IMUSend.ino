@@ -1,12 +1,12 @@
 //To make this work: Turn on motors. Load to Teensy while subject standing still. When done (data updating in Serial Monitor), run Python code ISRA_Main.py.
 //Once that one is running (data updating in Command Window), start running. To change peak intensity, change lines 85-86 in the Python code.
-#include "Serial_Com.h"
-#include "Wireless_IMU.h"
-#include <Arduino.h>
-#include "MovingAverage.h"
-#include <math.h>  
-#include <iomanip> 
-#include <cstring>  
+#include "Serial_Com.h"  
+#include "Wireless_IMU.h"  
+#include <Arduino.h>  
+#include "MovingAverage.h"  
+#include <math.h>    
+#include <iomanip>    
+#include <cstring>    
 
 /*MOTOR*/ 
 #include <FlexCAN_T4.h>   
@@ -17,7 +17,7 @@
 FlexCAN_T4<CAN3, RX_SIZE_256, TX_SIZE_16> Can3;   
  
 /*Filter*/
-MovingAverage LTAVx(12);    
+MovingAverage LTAVx(12);     
 MovingAverage RTAVx(12);     
 float f_LTAVx = 0;  
 float f_RTAVx = 0;  
@@ -105,7 +105,7 @@ unsigned long t_0 = 0;
 // double cyclespersec_ctrl = 28;  // [Hz] teensy controller sample rate (Maximum frequency: 1000 Hz due to Can Bus) Controller must be faster than ble
 double cyclespersec_ctrl = 200;    // [Hz] teensy controller sample rate (Maximum frequency: 1000 Hz due to Can Bus) Controller must be faster than ble
 double cyclespersec_ble  = 20;     // [Hz] Bluetooth sending data frequency 
-unsigned long current_time = 0;
+unsigned long current_time = 0;    
 unsigned long previous_time = 0;                                           // used to control the controller sample rate.
 unsigned long previous_time_ble = 0;                                       // used to control the Bluetooth communication frequency
 unsigned long Tinterval_ctrl_micros = (unsigned long)(1000000 / cyclespersec_ctrl); // used to control the teensy controller frequency
@@ -242,12 +242,12 @@ void loop() {
 
   Serial_Com.READ2();     
 
-  current_time = micros() - t_0;            
-  t = current_time/1000000.0;   
+  current_time = micros() - t_0;             
+  t = current_time/1000000.0;       
 
   if (current_time - previous_time > Tinterval_ctrl_micros) { 
-    f_LTAVx = LTAVx.addSample(imu.LTAVx);  
-    f_RTAVx = RTAVx.addSample(imu.RTAVx);   
+    f_LTAVx = LTAVx.addSample(imu.LTAVx);    
+    f_RTAVx = RTAVx.addSample(imu.RTAVx);    
 
     l_leg_angle    = imu.LTx;     
     r_leg_angle    = imu.RTx;     
@@ -257,33 +257,26 @@ void loop() {
     Serial_Com.WRITE(Send, Send_Length);    
 
     if (current_time - previous_time_ble > Tinterval_ble_micros) {
-
-      Receive_ble_Data();  
-      Transmit_ble_Data();      
-
-      previous_time_ble = current_time;  
-    }     
-    previous_time = current_time;  
+      ReadCmd();   
+      Receive_ble_Data();    
+      Transmit_ble_Data();    
+      previous_time_ble = current_time;       
+    }   
+    previous_time = current_time;    
   } 
 
   // if (current_time - previous_time > Tinterval_ctrl_micros) {
-
   //   // f_LTAVx = LTAVx.addSample(imu.LTAVx);  
   //   // f_RTAVx = RTAVx.addSample(imu.RTAVx);   
-
   //   // l_leg_angle    = imu.LTx;     
   //   // r_leg_angle    = imu.RTx;     
   //   // l_leg_velocity = f_LTAVx;     
   //   // r_leg_velocity = f_RTAVx;      
-
   //   // SendIMUSerial();    
   //   // Serial_Com.WRITE(Send, Send_Length);   
-
   //   if (current_time - previous_time_ble > Tinterval_ble_micros) {
-
   //     Receive_ble_Data();  
   //     Transmit_ble_Data();      
-
   //     previous_time_ble = current_time;   
   //   }     
   // }
@@ -400,6 +393,17 @@ void initial_Sig_motor() {
   M1_torque_command = 0.0;    
   M2_torque_command = 0.0;         
 }
+
+void ReadCmd(){
+  L_CMD_int16 = (Serial_Com.SerialData2[3] << 8) | Serial_Com.SerialData2[4];
+  L_CMD_serial = Serial_Com.uint_to_float(L_CMD_int16, -20, 20, 16);    
+
+  R_CMD_int16 = (Serial_Com.SerialData2[5] << 8) | Serial_Com.SerialData2[6];
+  R_CMD_serial = Serial_Com.uint_to_float(R_CMD_int16, -20, 20, 16); 
+
+  RL_torque_command_1 = assistive_ratio * L_CMD_serial;      
+  RL_torque_command_2 = assistive_ratio * R_CMD_serial;       
+}  
 
 /// @brief ///
 void receive_mit_ctl_feedback() {
@@ -579,7 +583,7 @@ void Receive_ble_Data(){
   if (Serial5.available() >= 20) {
 
     // Read the incoming byte:
-    Serial5.readBytes(&data_rs232_rx[0], 20);     
+    Serial5.readBytes(&data_rs232_rx[0], 20);      
 
     float value_scale = 10.0;     
     if (data_rs232_rx[0] == 165) { // Check the first byte
@@ -589,7 +593,7 @@ void Receive_ble_Data(){
           M_Selected        = data_rs232_rx[4]; 
           CtrlMode_Selected = data_rs232_rx[6];   
 
-          GUI_stiffness_cmd = data_rs232_rx[7];   
+          GUI_stiffness_cmd = data_rs232_rx[7];    
           GUI_damping_cmd   = data_rs232_rx[8];    
           GUI_force_cmd     = data_rs232_rx[9];    
           GUI_assistive_ratio_cmd = data_rs232_rx[10];    
@@ -610,16 +614,16 @@ void Receive_ble_Data(){
           cmd_ampl = GUI_force_ampl_cmd/value_scale;    
           cmd_fre  = GUI_force_fre_cmd/value_scale;   
 
-          Serial.print("| Motor ");
-          Serial.print(M_Selected, DEC); // This contains the motor number
-          Serial.print(" selected | Control Mode ");
-          Serial.print(CtrlMode_Selected, DEC); // This contains the Control mode
-          Serial.print(" selected | Command ");
-          //Serial.print(GUI_force_cmd, DEC); // This contains the desired command
-          // Serial.print(GUI_K);  
-          Serial.print(GUI_K_p);  
-          Serial.print(GUI_K_d);  
-          Serial.println(" sent |");
+          // Serial.print("| Motor ");
+          // Serial.print(M_Selected, DEC); // This contains the motor number
+          // Serial.print(" selected | Control Mode ");
+          // Serial.print(CtrlMode_Selected, DEC); // This contains the Control mode
+          // Serial.print(" selected | Command ");
+          // //Serial.print(GUI_force_cmd, DEC); // This contains the desired command
+          // // Serial.print(GUI_K);  
+          // Serial.print(GUI_K_p);  
+          // Serial.print(GUI_K_d);  
+          // Serial.println(" sent |");
         }
       }
     }
@@ -847,86 +851,6 @@ void print_data_motor() {
   Serial.print(" ; M1_pos ; ");
   Serial.print(sig_m1.pos);
   Serial.println(" ;  ");
-}  
-
-void M1_Torque_Impedance_Control_Example(){
-    // p_des = l_pos_des;  //dont change this
-    // v_des = l_vel_des;  //dont change this
-    // kp = kp_imp;        //dont change this
-    // kd = kd_imp;        //dont change this  
-    // t_ff = 0.0;   
-
-    p_des = 0.0;  //dont change this
-    v_des = 0.0;  //dont change this
-    kp = 0.0;        //dont change this
-    kd = 0.0;        //dont change this  
-
-    t_ff = M1_torque_command;   
-    tau_imp = (p_des - sig_m1.pos) * kp + (v_des - sig_m1.spe) * kd + t_ff;    
-
-    tau_imp = t_ff; 
-    sig_m1.sig_mit_ctl_cmd(p_des, v_des, kp, kd, tau_imp);   
-
-    receive_mit_ctl_feedback();  
-} 
-
-void Sig_M_Torque_Impedance_Control_Example(){
-    // p_des = l_pos_des;  //dont change this
-    // v_des = l_vel_des;  //dont change this
-    // kp = kp_imp;        //dont change this
-    // kd = kd_imp;        //dont change this  
-    // t_ff = 0.0;   
-
-    p_des = 0.0;  //dont change this    
-    v_des = 0.0;  //dont change this    
-    kp = 0.0;     //dont change this    
-    kd = 0.0;     //dont change this     
-
-    t_ff = M1_torque_command;   
-    // tau_imp = (p_des - sig_m1.pos) * kp + (v_des - sig_m1.spe) * kd + t_ff;    
-
-    tau_imp = t_ff;   
-    sig_m1.sig_mit_ctl_cmd(p_des, v_des, kp, kd, tau_imp);    
-
-    receive_mit_ctl_feedback();    
-    // receive_mit_ctl_feedbcak();  
-} 
-
-void M2_Torque_Impedance_Control_Example(){
-    p_des = 0.0;      //dont change this
-    v_des = 0.0;  //dont change this
-    kp = 0.0;        //dont change this
-    kd = 0.0;        //dont change this  
-
-    // t_ff = M1_torque_command;   
-    t_ff = 0.3;    
-    // tau_imp = (p_des - sig_m1.pos) * kp + (v_des - sig_m1.spe) * kd + t_ff;   
-    tau_imp = t_ff;    
-    sig_m2.sig_mit_ctl_cmd(p_des, v_des, kp, kd, tau_imp);    
-
-    receive_mit_ctl_feedback();    
-}  
-
-void M1_Position_Control_Example() {
-  position_command = 0;
-  p_des = position_command * PI / 180;
-  v_des = 0;  //dont change this
-  kp = 30;    //max 450 min 0
-  kd = 1.5;   //max 5 min 0
-  t_ff = 0;   //dont change this
-  sig_m1.sig_mit_ctl_cmd(p_des, v_des, kp, kd, t_ff);
-  receive_mit_ctl_feedback();
-}
-
-void M2_Position_Control_Example() {
-  position_command = 0;
-  p_des = position_command * PI / 180;
-  v_des = 0;  //dont change this
-  kp = 30;    //max 450 min 0
-  kd = 1.5;   //max 5 min 0
-  t_ff = 0;   //dont change this
-  sig_m2.sig_mit_ctl_cmd(p_des, v_des, kp, kd, t_ff);
-  receive_mit_ctl_feedback();
 }  
 
 
